@@ -1,0 +1,71 @@
+import 'data/clues_en.dart';
+import 'data/clues_tr.dart';
+import 'data/groups.dart';
+import 'data/pairs.dart';
+import 'data/proverbs.dart';
+import 'words.dart';
+
+/// İpucu, atasözü ve kategori içeriği olan diller.
+const kClueLangs = ['tr', 'en'];
+
+String _lowerWord(String w, String lang) {
+  var s = w.trim();
+  if (lang == 'tr') s = s.replaceAll('I', 'ı').replaceAll('İ', 'i');
+  return foldWord(s.toLowerCase(), lang);
+}
+
+bool _letters(String w, String lang) {
+  final alpha = Lexicon.of(lang).letters.toSet();
+  return w.length >= 3 && w.split('').every(alpha.contains);
+}
+
+final Map<String, List<(String, String)>> _clues = {};
+
+/// İpuçlu kelimeler: (yanıt, ipucu). Yanıt küçük harf, sadeleştirilmiş.
+List<(String, String)> clueList(String lang) => _clues[lang] ??= () {
+      final src = lang == 'tr' ? kCluesTr : kCluesEn;
+      final seen = <String>{};
+      final out = <(String, String)>[];
+      for (final e in src) {
+        final i = e.indexOf('|');
+        if (i < 0) continue;
+        final w = _lowerWord(e.substring(0, i), lang);
+        if (w.contains(' ') || !_letters(w, lang) || !seen.add(w)) continue;
+        out.add((w, e.substring(i + 1)));
+      }
+      return out;
+    }();
+
+/// Atasözleri (yazıldığı gibi).
+List<String> proverbList(String lang) => lang == 'tr' ? kProverbsTr : kProverbsEn;
+
+final Map<String, List<(String, List<String>)>> _groups = {};
+
+/// Kategoriler: (başlık, kelimeler).
+List<(String, List<String>)> groupList(String lang) => _groups[lang] ??= [
+      for (final e in (lang == 'tr' ? kGroupsTr : kGroupsEn))
+        (
+          e.substring(0, e.indexOf('|')),
+          [
+            for (final w in e.substring(e.indexOf('|') + 1).split(' '))
+              if (w.isNotEmpty && _letters(_lowerWord(w, lang), lang)) _lowerWord(w, lang),
+          ],
+        ),
+    ];
+
+List<(String, String)> _pairs(List<String> src, String lang) => [
+      for (final e in src)
+        if (e.contains('|')) (_lowerWord(e.split('|')[0], lang), _lowerWord(e.split('|')[1], lang)),
+    ];
+
+/// Eş anlamlı çiftler.
+List<(String, String)> synonymList(String lang) => _pairs(lang == 'tr' ? kSynonymsTr : kSynonymsEn, lang);
+
+/// Zıt anlamlı çiftler.
+List<(String, String)> antonymList(String lang) => _pairs(lang == 'tr' ? kAntonymsTr : kAntonymsEn, lang);
+
+/// Cümleyi kelimelere ayır (noktalama atılır), küçük harf.
+List<String> sentenceWords(String s, String lang) => [
+      for (final w in s.split(' '))
+        if (w.trim().isNotEmpty) _lowerWord(w.replaceAll(RegExp(r"[.,;:!?'’]"), ''), lang),
+    ];

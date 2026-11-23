@@ -1,12 +1,16 @@
 import 'data/clues_en.dart';
 import 'data/clues_tr.dart';
+import 'data/content_index.dart';
 import 'data/groups.dart';
 import 'data/pairs.dart';
 import 'data/proverbs.dart';
 import 'words.dart';
 
-/// İpucu, atasözü ve kategori içeriği olan diller.
-const kClueLangs = ['tr', 'en'];
+/// İpucu, atasözü ve kategori içeriği olan diller: bütün kelime dilleri.
+const kClueLangs = kWordLangs;
+
+List<String> _src(String lang, List<String> tr, List<String> en, Map<String, List<String>> other) =>
+    lang == 'tr' ? tr : (lang == 'en' ? en : (other[lang] ?? en));
 
 String _lowerWord(String w, String lang) {
   var s = w.trim();
@@ -23,7 +27,7 @@ final Map<String, List<(String, String)>> _clues = {};
 
 /// İpuçlu kelimeler: (yanıt, ipucu). Yanıt küçük harf, sadeleştirilmiş.
 List<(String, String)> clueList(String lang) => _clues[lang] ??= () {
-      final src = lang == 'tr' ? kCluesTr : kCluesEn;
+      final src = _src(lang, kCluesTr, kCluesEn, kCluesByLang);
       final seen = <String>{};
       final out = <(String, String)>[];
       for (final e in src) {
@@ -37,13 +41,13 @@ List<(String, String)> clueList(String lang) => _clues[lang] ??= () {
     }();
 
 /// Atasözleri (yazıldığı gibi).
-List<String> proverbList(String lang) => lang == 'tr' ? kProverbsTr : kProverbsEn;
+List<String> proverbList(String lang) => _src(lang, kProverbsTr, kProverbsEn, kProverbsByLang);
 
 final Map<String, List<(String, List<String>)>> _groups = {};
 
 /// Kategoriler: (başlık, kelimeler).
 List<(String, List<String>)> groupList(String lang) => _groups[lang] ??= [
-      for (final e in (lang == 'tr' ? kGroupsTr : kGroupsEn))
+      for (final e in _src(lang, kGroupsTr, kGroupsEn, kGroupsByLang))
         (
           e.substring(0, e.indexOf('|')),
           [
@@ -59,13 +63,13 @@ List<(String, String)> _pairs(List<String> src, String lang) => [
     ];
 
 /// Eş anlamlı çiftler.
-List<(String, String)> synonymList(String lang) => _pairs(lang == 'tr' ? kSynonymsTr : kSynonymsEn, lang);
+List<(String, String)> synonymList(String lang) => _pairs(_src(lang, kSynonymsTr, kSynonymsEn, kSynonymsByLang), lang);
 
 /// Zıt anlamlı çiftler.
-List<(String, String)> antonymList(String lang) => _pairs(lang == 'tr' ? kAntonymsTr : kAntonymsEn, lang);
+List<(String, String)> antonymList(String lang) => _pairs(_src(lang, kAntonymsTr, kAntonymsEn, kAntonymsByLang), lang);
 
-/// Cümleyi kelimelere ayır (noktalama atılır), küçük harf.
+/// Cümleyi kelimelere ayır (noktalama atılır, kesme işareti kelimeyi böler), küçük harf.
 List<String> sentenceWords(String s, String lang) => [
-      for (final w in s.split(' '))
+      for (final w in s.replaceAll(RegExp(r"['’]"), ' ').split(' '))
         if (w.trim().isNotEmpty) _lowerWord(w.replaceAll(RegExp(r"[.,;:!?'’]"), ''), lang),
     ];

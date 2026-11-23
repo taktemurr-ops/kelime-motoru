@@ -107,7 +107,7 @@ class ProverbKind extends WordKind {
     final pool = <String>[for (final s in all) ...sentenceWords(s, lx.lang).where((w) => w.length >= 4)];
     for (final s in order.take(n)) {
       final raw = s.split(' ');
-      final cands = [for (var i = 0; i < raw.length; i++) if (raw[i].length >= 4) i];
+      final cands = [for (var i = 0; i < raw.length; i++) if (raw[i].length >= 4 && !raw[i].contains(RegExp(r"['’]"))) i];
       if (cands.isEmpty) continue;
       final k = r.pick(cands);
       final answer = sentenceWords(raw[k], lx.lang).first;
@@ -426,7 +426,7 @@ class _PairsViewState extends State<_PairsView> with SecondsTicker, Flash {
 
   @override
   Widget build(BuildContext context) {
-    final title = play.wl == 'tr' ? (rd.antonyms ? 'Zıt anlamlılar' : 'Eş anlamlılar') : (rd.antonyms ? 'Opposites' : 'Same meaning');
+    final title = kt(play.lang, rd.antonyms ? 'opposites' : 'sameMeaning');
     final doneR = {for (final i in doneL) rd.match[i]};
     return Column(children: [
       WordBar(play: play, left: clock(), status: '$title · ${round + 1}/${p.rounds.length}', onHint: _hint),
@@ -562,7 +562,7 @@ class _GroupsViewState extends State<_GroupsView> with SecondsTicker, Flash {
     final near = [for (var g = 0; g < 4; g++) if (!solved.contains(g)) p.groups[g].where(sel.contains).length].fold<int>(0, math.max);
     setState(() => mistakes++);
     play.ctx.sfx(Sfx.error);
-    flash(near == 3 ? (play.wl == 'tr' ? 'Bir eksik!' : 'One away!') : kt(play.lang, 'wrong'));
+    flash(near == 3 ? kt(play.lang, 'oneAway') : kt(play.lang, 'wrong'));
     if (mistakes >= p.lives) {
       ended = true;
       play.ctx.sfx(Sfx.lose);

@@ -26,7 +26,7 @@ class PetalKind extends WordKind {
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
-    final len = 5 + math.min(4, d ~/ 2);
+    final len = 5 + math.min<int>(4, d ~/ 2);
     final pool = lx.pool(len, d);
     if (pool.isEmpty) return null;
     final w = r.pick(pool);

@@ -680,7 +680,7 @@ class AcrosticKind extends WordKind {
     for (final c in clues) {
       byFirst.putIfAbsent(c.$1[0], () => []).add(c);
     }
-    final len = 4 + math.min(4, d ~/ 2);
+    final len = 4 + math.min<int>(4, d ~/ 2);
     final keys = [for (final w in lx.pool(len, d)) if (w.split('').every(byFirst.containsKey)) w];
     if (keys.isEmpty) return null;
     final key = r.pick(keys);

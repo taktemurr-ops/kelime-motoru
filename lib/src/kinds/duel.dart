@@ -395,7 +395,7 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
   void _setupRound() {
     picked = [];
     bestWord = '';
-    vals = [for (final n in rd.nums) n];
+    vals = <int?>[for (final n in rd.nums) n];
     history.clear();
     selA = null;
     op = null;

@@ -37,6 +37,13 @@ abstract class WordKind {
   /// İçeriğin olduğu diller (null: kelime listesi olan bütün diller).
   List<String>? get contentLangs => null;
 
+  /// Ekran klavyesiyle oynanır mı: Korecede jamo sözlüğü (두벌식 klavye)
+  /// kullanılır; öbür taş dillerinde klavye yerine taş havuzu gösterilir.
+  bool get keyed => false;
+
+  /// Türün verilen dildeki sözlüğü.
+  Lexicon lexicon(String lang) => Lexicon.of(lang, keyed: keyed);
+
   /// Zorluk 1..10 için deterministik bölüm. Kurulamazsa null.
   WPuzzle? make(Lexicon lx, int d, SeededRandom r);
 
@@ -62,7 +69,7 @@ abstract class WordKind {
 
 /// Türü verilen dil ve zorlukta kur: birkaç tohum dener, olmazsa kolaylaştırır.
 WPuzzle realize(WordKind k, String lang, int d, int seed) {
-  final lx = Lexicon.of(lang);
+  final lx = k.lexicon(lang);
   for (var dd = d; dd >= 1; dd = dd > 3 ? dd - 2 : dd - 1) {
     for (var a = 0; a < 24; a++) {
       WPuzzle? p;
@@ -125,7 +132,7 @@ class WordRules extends GameRules<WLevel> {
   Validation validate(WLevel puzzle, LevelSpec spec) {
     final k = kindFor(mapDifficulty(spec.difficulty));
     if (k.id != puzzle.kind) return const Validation.fail('kind mismatch');
-    return k.check(puzzle.puzzle, Lexicon.of(puzzle.lang)) ? const Validation.ok() : const Validation.fail('invalid');
+    return k.check(puzzle.puzzle, k.lexicon(puzzle.lang)) ? const Validation.ok() : const Validation.fail('invalid');
   }
 }
 
@@ -394,7 +401,7 @@ class _WordStageState extends State<WordStage> {
       ctx: widget.ctx,
       rules: widget.rules,
       puzzle: puzzle!,
-      lx: Lexicon.of(wl),
+      lx: kind.lexicon(wl),
       d: lv.d,
       seed: lv.seed,
       resume: resume,
@@ -429,6 +436,13 @@ void registerWordLicenses() {
         'The Finnish list is filtered with the Kotus word list (Institute for the Languages of Finland), '
         'CC BY 4.0. LibreOffice hunspell dictionaries (ar, fa, he, id) were used only as a build-time '
         'filter and are not distributed.\n\n'
+        'Tile-script lists (zh, ko, vi, hi, bn, th): Chinese words, frequencies and part-of-speech tags from '
+        'jieba (MIT, https://github.com/fxsjy/jieba) ranked with wordfreq; pinyin from pypinyin (MIT). '
+        'Korean, Hindi and Bengali lists from wordfreq (CC BY-SA 4.0); hunspell-ko and LibreOffice hi_IN/bn_BD '
+        'dictionaries were used only as build-time filters and are not distributed. Vietnamese words from pyvi '
+        '(MIT, https://github.com/trungtv/pyvi) and the Universal Dependencies Vietnamese-VTB treebank '
+        '(CC BY-SA 4.0). Thai words, frequencies and syllabification from PyThaiNLP (CC0 corpus, Apache-2.0 code, '
+        'https://github.com/PyThaiNLP/pythainlp); Thai name lists (CC BY-SA 4.0) were used only as filters.\n\n'
         'Clues, proverb selections, categories and word pairs were written by the studio.',
       )));
 }

@@ -28,7 +28,7 @@ class Trie {
 }
 
 final Map<String, Trie> _tries = {};
-Trie trieFor(Lexicon lx) => _tries[lx.lang] ??= Trie.of(lx.words.where((w) => w.length <= 9));
+Trie trieFor(Lexicon lx) => _tries[lx.jamo ? 'ko#jamo' : lx.lang] ??= Trie.of(lx.words.where((w) => w.length <= 9));
 
 List<int> gridNeighbors(int i, int w, int h) {
   final x = i % w, y = i ~/ w;
@@ -84,8 +84,9 @@ List<int> findPath(List<String> g, int w, int h, String word) {
   return const [];
 }
 
-int boggleScore(String w) {
-  switch (w.length) {
+/// Kelime puanı; taş dillerinde boy taş sayısıdır (iki taş 3 harf gibi sayılır).
+int boggleScore(String w, [bool tiled = false]) {
+  switch (w.length + (tiled ? 1 : 0)) {
     case 3:
     case 4:
       return 1;
@@ -118,12 +119,48 @@ class BoggleKind extends WordKind {
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
     final n = d <= 4 ? 4 : (d <= 8 ? 5 : 6);
-    final g = [for (var i = 0; i < n * n; i++) lx.randomLetter(r)];
-    final words = solveGrid(g, n, n, trieFor(lx)).toList()..sort();
-    if (words.length < 10 + n * 2) return null;
-    final total = words.fold<int>(0, (a, w) => a + boggleScore(w));
+    final g = lx.tiled ? _seededGrid(lx, n, d, r) : [for (var i = 0; i < n * n; i++) lx.randomLetter(r)];
+    final words = solveGrid(g, n, n, trieFor(lx), minLen: lx.minLen).toList()..sort();
+    if (words.length < (lx.tiled ? 6 + n : 10 + n * 2)) return null;
+    final total = words.fold<int>(0, (a, w) => a + boggleScore(w, lx.tiled));
     final need = math.max(6, (total * (0.10 + d * 0.025)).round());
     return BogglePuzzle(n, g, words, need, 150 + n * 15);
+  }
+
+  /// Taş dillerinde rastgele taşlar nadiren kelime kurar: ızgaraya önce birkaç
+  /// sık kelime komşu yollar halinde yerleştirilir, kalan hücreler sık
+  /// kelimelerin taşlarıyla doldurulur.
+  static List<String> _seededGrid(Lexicon lx, int n, int d, SeededRandom r) {
+    final g = List<String>.filled(n * n, '');
+    final common = lx.letters.take(150 + d * 15).toSet();
+    final pool = [for (final w in lx.poolRange(2, 4, d)) if (w.split('').every(common.contains)) w];
+    if (pool.isEmpty) pool.addAll(lx.poolRange(2, 3, d));
+    var placed = 0, guard = 0;
+    while (placed < n + 1 && guard++ < 200) {
+      final w = r.pick(pool);
+      final empty = [for (var i = 0; i < g.length; i++) if (g[i].isEmpty) i];
+      if (empty.length < w.length) break;
+      var cur = r.pick(empty);
+      final route = <int>[cur];
+      for (var k = 1; k < w.length; k++) {
+        final opts = [for (final x in gridNeighbors(cur, n, n)) if (g[x].isEmpty && !route.contains(x)) x];
+        if (opts.isEmpty) break;
+        cur = r.pick(opts);
+        route.add(cur);
+      }
+      if (route.length < w.length) continue;
+      for (var k = 0; k < w.length; k++) {
+        g[route[k]] = w[k];
+      }
+      placed++;
+    }
+    for (var i = 0; i < g.length; i++) {
+      if (g[i].isEmpty) {
+        final w = r.pick(pool);
+        g[i] = w[r.nextInt(w.length)];
+      }
+    }
+    return g;
   }
 
   @override
@@ -157,7 +194,7 @@ class BlocksKind extends WordKind {
     final h = d <= 3 ? 5 : (d <= 7 ? 6 : 7);
     final cols = [for (var i = 0; i < w; i++) <String>[]];
     final placed = <String>[];
-    final pool = lx.poolRange(3, d <= 4 ? 5 : 6, d);
+    final pool = lx.poolFit(3, d <= 4 ? 5 : 6, d);
     var guard = 0;
     final cap = (w * h * (0.7 + d * 0.02)).round();
     while (guard++ < 400) {
@@ -298,7 +335,7 @@ class _PathViewState extends State<_PathView> with SecondsTicker, Flash {
     }
   }
 
-  int get score => found.fold<int>(0, (a, x) => a + boggleScore(x));
+  int get score => found.fold<int>(0, (a, x) => a + boggleScore(x, lx.tiled));
 
   @override
   void onTick() {
@@ -342,7 +379,7 @@ class _PathViewState extends State<_PathView> with SecondsTicker, Flash {
     final word = path.map((i) => grid[i]).join();
     final cells = List.of(path);
     setState(() => path.clear());
-    if (word.length < 3) return;
+    if (word.length < lx.minLen) return;
     if (widget.blocks) {
       if (!lx.has(word)) {
         play.ctx.sfx(Sfx.error);
@@ -394,7 +431,7 @@ class _PathViewState extends State<_PathView> with SecondsTicker, Flash {
       hintCell = null;
     });
     play.ctx.sfx(Sfx.clear);
-    flash('+${boggleScore(word)}');
+    flash('+${boggleScore(word, lx.tiled)}');
     play.save({'f': found, 's': seconds});
     if (score >= p.need) {
       ended = true;
@@ -555,10 +592,17 @@ class _PathPainter extends CustomPainter {
         RRect.fromRectAndRadius(r, Radius.circular(cs * 0.16)),
         Paint()..color = on ? WColors.near : (hint == i ? WColors.soft : WColors.tile),
       );
-      final tp = TextPainter(
+      var tp = TextPainter(
         text: TextSpan(text: lx.upCh(grid[i]), style: TextStyle(fontSize: cs * 0.46, fontWeight: FontWeight.w800, color: WColors.ink)),
         textDirection: TextDirection.ltr,
       )..layout();
+      if (tp.width > cs * 0.86) {
+        // Taş dillerinde uzun taş (Tay hecesi, Vietnamca hece): hücreye sığdır.
+        tp = TextPainter(
+          text: TextSpan(text: (tp.text! as TextSpan).text, style: (tp.text! as TextSpan).style!.copyWith(fontSize: cs * 0.46 * cs * 0.86 / tp.width)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+      }
       tp.paint(c, _c(i) - Offset(tp.width / 2, tp.height / 2));
     }
   }

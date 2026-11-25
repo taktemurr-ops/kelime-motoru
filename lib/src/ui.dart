@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -177,7 +178,14 @@ class LetterTile extends StatelessWidget {
       ),
       child: Stack(children: [
         Center(
-          child: Text(letter, style: TextStyle(fontSize: size * 0.52, fontWeight: FontWeight.w800, color: fg, height: 1.0)),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: size * 0.07),
+            // Taş dillerinde taş birkaç harf olabilir (Vietnamca hece, Tay hecesi): sığdır.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(letter, style: TextStyle(fontSize: size * 0.52, fontWeight: FontWeight.w800, color: fg, height: 1.0)),
+            ),
+          ),
         ),
         if (value != null)
           Positioned(
@@ -192,7 +200,9 @@ class LetterTile extends StatelessWidget {
   }
 }
 
-/// Ekran klavyesi (dilin alfabesiyle).
+/// Ekran klavyesi (dilin alfabesiyle). Taş dillerinde ([Lexicon.tiled])
+/// klavye yerine [pool] taş havuzu gösterilir: bölümün gerektirdiği taşlar ve
+/// şaşırtmacalar (bkz. [Lexicon.keyPool]).
 class WordKeyboard extends StatelessWidget {
   final Lexicon lx;
   final void Function(String ch) onKey;
@@ -200,6 +210,7 @@ class WordKeyboard extends StatelessWidget {
   final VoidCallback onBack;
   final Map<String, Color> colors;
   final bool showEnter;
+  final List<String>? pool;
   const WordKeyboard({
     super.key,
     required this.lx,
@@ -208,10 +219,21 @@ class WordKeyboard extends StatelessWidget {
     required this.onBack,
     this.colors = const {},
     this.showEnter = true,
+    this.pool,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (lx.tiled) {
+      return TilePool(
+        lx: lx,
+        tiles: pool ?? lx.letters.take(16).toList(),
+        onKey: onKey,
+        onEnter: showEnter ? onEnter : null,
+        onBack: onBack,
+        colors: colors,
+      );
+    }
     final rows = lx.keyboardRows();
     return LayoutBuilder(builder: (context, box) {
       final per = rows.first.length + 1;
@@ -251,6 +273,72 @@ class WordKeyboard extends StatelessWidget {
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             key('', onEnter, w: 3, icon: Icons.keyboard_return, color: WColors.near),
           ]),
+      ]);
+    });
+  }
+}
+
+/// Taş havuzu: taş dillerinde klavyenin yerini alır. Her düğme bir taştır
+/// (hece, karakter ya da akşara); geri al ve onay düğmeleri altta.
+class TilePool extends StatelessWidget {
+  final Lexicon lx;
+  final List<String> tiles;
+  final void Function(String ch) onKey;
+  final VoidCallback? onEnter;
+  final VoidCallback? onBack;
+  final Map<String, Color> colors;
+  const TilePool({
+    super.key,
+    required this.lx,
+    required this.tiles,
+    required this.onKey,
+    this.onEnter,
+    this.onBack,
+    this.colors = const {},
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final longest = tiles.fold<int>(1, (a, t) => math.max(a, lx.upCh(t).runes.length));
+      final per = longest > 4 ? 4 : (longest > 2 ? 5 : 6);
+      final kw = ((box.maxWidth - 8) / per - 6).clamp(40.0, 96.0);
+      Widget key(Widget child, VoidCallback? onTap, {Color? color, double w = 1}) => Padding(
+            padding: const EdgeInsets.all(3),
+            child: Material(
+              color: color ?? WColors.soft,
+              borderRadius: BorderRadius.circular(9),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(9),
+                onTap: onTap,
+                child: SizedBox(width: kw * w, height: 46, child: Center(child: child)),
+              ),
+            ),
+          );
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        Wrap(alignment: WrapAlignment.center, children: [
+          for (final t in tiles)
+            key(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(lx.upCh(t),
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: (colors[t]?.computeLuminance() ?? 1) < 0.45 ? Colors.white : WColors.ink,
+                      )),
+                ),
+              ),
+              () => onKey(t),
+              color: colors[t],
+            ),
+        ]),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          if (onBack != null) key(const Icon(Icons.backspace_outlined, size: 20, color: WColors.ink), onBack, w: 1.4),
+          if (onEnter != null) key(const Icon(Icons.keyboard_return, size: 20, color: WColors.ink), onEnter, w: 2, color: WColors.near),
+        ]),
       ]);
     });
   }

@@ -34,7 +34,7 @@ class SearchKind extends WordKind {
     final size = 7 + (d * 5) ~/ 10;
     final count = 6 + d;
     final dirs = d <= 3 ? 2 : (d <= 6 ? 4 : 8);
-    final pool = lx.poolRange(3, math.min(size, 9), d);
+    final pool = lx.poolFit(3, math.min(size, 9), d);
     if (pool.length < count * 3) return null;
     final grid = List<String>.filled(size * size, '');
     final words = <String>[];
@@ -283,10 +283,17 @@ class _SearchPainter extends CustomPainter {
     if (sel.isNotEmpty) _capsule(c, sel, WColors.accent.withValues(alpha: 0.35));
     if (hint != null) c.drawCircle(_c(hint!), cs * 0.42, Paint()..color = WColors.near.withValues(alpha: 0.6));
     for (var i = 0; i < p.grid.length; i++) {
-      final tp = TextPainter(
+      var tp = TextPainter(
         text: TextSpan(text: lx.upCh(p.grid[i]), style: TextStyle(fontSize: cs * 0.5, fontWeight: FontWeight.w700, color: WColors.ink)),
         textDirection: TextDirection.ltr,
       )..layout();
+      if (tp.width > cs * 0.86) {
+        // Taş dillerinde uzun taş (Tay hecesi, Vietnamca hece): hücreye sığdır.
+        tp = TextPainter(
+          text: TextSpan(text: (tp.text! as TextSpan).text, style: (tp.text! as TextSpan).style!.copyWith(fontSize: cs * 0.5 * cs * 0.86 / tp.width)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+      }
       tp.paint(c, _c(i) - Offset(tp.width / 2, tp.height / 2));
     }
   }

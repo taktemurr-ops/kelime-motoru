@@ -27,7 +27,7 @@ class SlideKind extends WordKind {
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
-    final len = d <= 3 ? 4 : (d <= 7 ? 5 : 6);
+    final len = lx.fit((d <= 3 ? 4 : (d <= 7 ? 5 : 6)) + (lx.tiled ? 1 : 0));
     final want = 3 + d ~/ 2;
     final pool = lx.pool(len, d);
     if (pool.length < want * 2) return null;
@@ -211,7 +211,8 @@ class JigsawKind extends WordKind {
     final words = <String>[];
     var guard = 0;
     while (words.length < n && guard++ < 200) {
-      final w = r.pick(lx.poolRange(6, 7 + d ~/ 3, d));
+      // Taş dillerinde en az üç taşlı kelimeler; parçalar bir ya da iki taş.
+      final w = r.pick(lx.tiled ? lx.poolRange(3, math.max(3, lx.fit(7 + d ~/ 3)), d) : lx.poolRange(6, 7 + d ~/ 3, d));
       if (!words.contains(w)) words.add(w);
     }
     if (words.length < n) return null;
@@ -219,8 +220,13 @@ class JigsawKind extends WordKind {
     for (final w in words) {
       var i = 0;
       while (i < w.length) {
-        var k = w.length - i <= 3 ? w.length - i : 2 + r.nextInt(2);
-        if (w.length - i - k == 1) k++;
+        int k;
+        if (lx.tiled) {
+          k = w.length - i <= 2 ? w.length - i : 1 + r.nextInt(2);
+        } else {
+          k = w.length - i <= 3 ? w.length - i : 2 + r.nextInt(2);
+          if (w.length - i - k == 1) k++;
+        }
         pieces.add(w.substring(i, i + k));
         i += k;
       }
@@ -231,7 +237,7 @@ class JigsawKind extends WordKind {
 
   @override
   bool check(WPuzzle p, Lexicon lx) =>
-      p is JigsawPuzzle && p.words.every(lx.has) && p.pieces.join().length == p.words.join().length && p.pieces.every((x) => x.length >= 2);
+      p is JigsawPuzzle && p.words.every(lx.has) && p.pieces.join().length == p.words.join().length && p.pieces.every((x) => x.length >= (lx.tiled ? 1 : 2));
 
   @override
   Widget build(WordPlay play) => _JigsawView(play: play);
@@ -393,16 +399,20 @@ class TypingKind extends WordKind {
   final bool falling;
   const TypingKind(this.id, {this.falling = false});
 
+  /// Klavye hızı Korecede 두벌식 jamo klavyesiyle yazılır; düşen harfler hecelerle.
+  @override
+  bool get keyed => !falling;
+
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
     if (!falling) {
       final n = 10 + d * 2;
-      final words = [for (var i = 0; i < n; i++) r.pick(lx.poolRange(3, 5 + d ~/ 3, d))];
+      final words = [for (var i = 0; i < n; i++) r.pick(lx.poolFit(3, 5 + d ~/ 3, d))];
       final time = 70 + d * 4;
       return StreamPuzzle(words, time, (n * 0.8).round());
     }
     // Düşen harfler: hedef kelimelerin harfleri karışık sırayla düşer.
-    final words = [for (var i = 0; i < 6 + d; i++) r.pick(lx.poolRange(3, 5, d))];
+    final words = [for (var i = 0; i < 6 + d; i++) r.pick(lx.poolFit(3, lx.tiled ? 6 : 5, d))];
     final drops = <String>[];
     for (final w in words) {
       final l = w.split('');
@@ -431,6 +441,21 @@ class _TypingView extends StatefulWidget {
 class _TypingViewState extends State<_TypingView> with SecondsTicker, Flash {
   late StreamPuzzle p;
   int idx = 0, done = 0, mistakes = 0;
+  int _poolAt = -1;
+  List<String> _poolCache = const [];
+
+  /// Taş dillerinde taş havuzu: bu ve sonraki kelimenin taşları + şaşırtmacalar
+  /// (taşlara sırayla hızlı dokunma).
+  List<String> get _pool {
+    if (!lx.tiled) return const [];
+    if (_poolAt == idx) return _poolCache;
+    final need = <String>[
+      if (idx < p.words.length) ...p.words[idx].split(''),
+      if (idx + 1 < p.words.length) ...p.words[idx + 1].split(''),
+    ];
+    _poolAt = idx;
+    return _poolCache = lx.keyPool(need, play.seed ^ idx, size: need.toSet().length + 4);
+  }
   String input = '';
   bool started = false;
 
@@ -520,7 +545,7 @@ class _TypingViewState extends State<_TypingView> with SecondsTicker, Flash {
           ]),
         ),
       ),
-      WordKeyboard(lx: lx, onKey: _key, onEnter: () {}, onBack: () {}, showEnter: false),
+      WordKeyboard(lx: lx, onKey: _key, onEnter: () {}, onBack: () {}, showEnter: false, pool: _pool),
       const SizedBox(height: 6),
     ]);
   }
@@ -601,7 +626,7 @@ class _FallingViewState extends State<_FallingView> with Flash {
 
   void _submit() {
     final w = picked.map((i) => tray[i]).join();
-    if (w.length < 3) return flash(kt(play.lang, 'short'));
+    if (w.length < lx.minLen) return flash(kt(play.lang, 'short'));
     if (!lx.has(w)) {
       play.ctx.sfx(Sfx.error);
       return flash(kt(play.lang, 'notWord'));

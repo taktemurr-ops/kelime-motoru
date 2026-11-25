@@ -49,8 +49,21 @@ class GuessKind extends WordKind {
   final bool hard;
   const GuessKind(this.id, {this.len = 5, this.boards = 1, this.hard = false});
 
+  /// Korecede jamo kutuları ve 두벌식 klavye (꼬들 benzeri).
+  @override
+  bool get keyed => true;
+
+  /// Taş dillerinde kelime boyu: Çincede dört karakterli deyimler (汉兜 benzeri),
+  /// öbürlerinde harf boyunun bir fazlasına karşılık gelen taş sayısı.
+  int tilesFor(Lexicon lx) {
+    if (!lx.tiled) return len;
+    if (lx.lang == 'zh') return len <= 4 ? 3 : 4;
+    return lx.fit(len + 1);
+  }
+
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
+    final len = tilesFor(lx);
     final pool = lx.pool(len, (d + 1) ~/ 2, minSize: 60);
     if (pool.length < boards * 3) return null;
     final picks = <String>[];
@@ -68,7 +81,7 @@ class GuessKind extends WordKind {
   bool check(WPuzzle p, Lexicon lx) {
     if (p is! GuessPuzzle) return false;
     if (p.answers.length != boards || p.answers.toSet().length != boards) return false;
-    return p.answers.every((w) => w.length == len && lx.has(w)) && p.rows >= len;
+    return p.answers.every((w) => w.length == p.len && lx.has(w)) && p.len == tilesFor(lx) && p.rows >= p.len;
   }
 
   @override
@@ -86,6 +99,19 @@ class _GuessView extends StatefulWidget {
 
 class _GuessViewState extends State<_GuessView> with SecondsTicker, Flash {
   late GuessPuzzle p;
+
+  /// Taş dillerinde taş havuzu: yanıtların taşları ve aynı boyda birkaç
+  /// "tuzak" kelimenin taşları (geçerli tahminler kurulabilsin diye).
+  late final List<String> _pool = () {
+    if (!lx.tiled) return const <String>[];
+    final r = SeededRandom(play.seed ^ 0x6e55);
+    final need = <String>[for (final a in p.answers) ...a.split('')];
+    final words = lx.pool(p.len, 3, minSize: 60);
+    for (var k = 0; k < 3 + p.answers.length && words.isNotEmpty; k++) {
+      need.addAll(r.pick(words).split(''));
+    }
+    return lx.keyPool(need, play.seed, size: need.toSet().length + 4);
+  }();
   final List<String> guesses = [];
   String input = '';
   final Set<int> hintCells = {}; // board*100 + pos
@@ -229,6 +255,18 @@ class _GuessViewState extends State<_GuessView> with SecondsTicker, Flash {
     return {for (final e in best.entries) e.key: [WColors.miss, WColors.near, WColors.hit][e.value]};
   }
 
+  Widget _composed(String w, double tile) => SizedBox(
+        width: tile * 1.8,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(lx.up(w), style: TextStyle(fontSize: tile * 0.45, fontWeight: FontWeight.w700, color: WColors.ink)),
+          ),
+        ),
+      );
+
   Widget _board(int b, double tile) {
     final ans = p.answers[b];
     final stop = solvedAt(b);
@@ -242,6 +280,8 @@ class _GuessViewState extends State<_GuessView> with SecondsTicker, Flash {
             padding: const EdgeInsets.all(1.5),
             child: LetterTile(letter: lx.upCh(g[i]), size: tile, fill: [WColors.miss, WColors.near, WColors.hit][sc[i]], raised: false),
           ),
+        // Korecede jamo kutularının yanında hecelere birleşmiş yazım.
+        if (lx.jamo) _composed(g, tile),
       ]));
     }
     if (stop < 0 && !ended) {
@@ -257,12 +297,14 @@ class _GuessViewState extends State<_GuessView> with SecondsTicker, Flash {
               raised: i < input.length,
             ),
           ),
+        if (lx.jamo) _composed(input, tile),
       ]));
       final empty = p.rows - guesses.length - 1;
       for (var k = 0; k < empty && k < 12; k++) {
         rows.add(Row(mainAxisSize: MainAxisSize.min, children: [
           for (var i = 0; i < p.len; i++)
             Padding(padding: const EdgeInsets.all(1.5), child: LetterTile(letter: '', size: tile, fill: WColors.paper.withValues(alpha: 0.55), raised: false)),
+          if (lx.jamo) SizedBox(width: tile * 1.8),
         ]));
       }
     }
@@ -294,7 +336,7 @@ class _GuessViewState extends State<_GuessView> with SecondsTicker, Flash {
           final rowsOfBoards = (n / cols).ceil();
           final perW = (box.maxWidth - 12) / cols;
           final perH = (box.maxHeight - 8) / rowsOfBoards;
-          final tile = math.min((perW - 12) / p.len - 3, (perH - 12) / p.rows - 3).clamp(10.0, 58.0);
+          final tile = math.min((perW - 12) / (p.len + (lx.jamo ? 1.8 : 0)) - 3, (perH - 12) / p.rows - 3).clamp(10.0, 58.0);
           return SingleChildScrollView(
             child: Center(
               child: Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
@@ -304,7 +346,9 @@ class _GuessViewState extends State<_GuessView> with SecondsTicker, Flash {
           );
         }),
       ),
-      WordKeyboard(lx: lx, onKey: _key, onEnter: _enter, onBack: _back, colors: _keyColors()),
+      if (hints > 0 && p.answers.length == 1 && lx.reading(p.answers.first) != null)
+        Text(lx.reading(p.answers.first)!, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: WColors.ink)),
+      WordKeyboard(lx: lx, onKey: _key, onEnter: _enter, onBack: _back, colors: _keyColors(), pool: _pool),
       const SizedBox(height: 6),
     ]);
   }

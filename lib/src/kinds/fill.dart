@@ -36,17 +36,22 @@ class MissingKind extends WordKind {
     final n = 4 + math.min(4, d ~/ 2);
     final words = <String>[];
     var guard = 0;
+    // Çincede dört karakterli deyimler (成语) boşluk doldurma; öbür taş
+    // dillerinde en az üç taşlı kelimeler.
+    final src = !lx.tiled
+        ? lx.poolRange(5, 6 + d ~/ 3, d)
+        : (lx.lang == 'zh' ? lx.pool(4, d) : lx.poolRange(3, math.max(3, lx.fit(6 + d ~/ 3)), d));
     while (words.length < n && guard++ < 200) {
-      final w = r.pick(lx.poolRange(5, 6 + d ~/ 3, d));
+      final w = r.pick(src);
       if (!words.contains(w)) words.add(w);
     }
     if (words.length < n) return null;
     final hidden = <int>[];
-    final per = 1 + d ~/ 4;
+    final per = (lx.tiled ? 1 + d ~/ 6 : 1 + d ~/ 4);
     for (var k = 0; k < words.length; k++) {
-      final idx = [for (var i = 1; i < words[k].length; i++) i];
+      final idx = [for (var i = lx.tiled ? 0 : 1; i < words[k].length; i++) i];
       r.shuffle(idx);
-      for (final i in idx.take(math.min(per, words[k].length - 2))) {
+      for (final i in idx.take(math.min(per, words[k].length - (lx.tiled ? 1 : 2)))) {
         hidden.add(k * 100 + i);
       }
     }
@@ -68,7 +73,8 @@ class SquareKind extends WordKind {
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
-    final n = d <= 3 ? 3 : 4;
+    // Taş dillerinde 2×2 ya da 3×3 taş karesi (karakter/hece kelime karesi).
+    final n = lx.tiled ? (d <= 2 ? 2 : 3) : (d <= 3 ? 3 : 4);
     final words = lx.ofLength(n);
     final pool = words.sublist(0, math.min(words.length, 2500 + d * 300));
     final byPrefix = <String, List<String>>{};
@@ -338,10 +344,24 @@ class CipherKind extends WordKind {
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
     final list = proverbList(lx.lang);
-    final pool = [for (final s in list) if (s.length >= 18 + d * 2) s];
-    if (pool.isEmpty) return null;
-    final s = r.pick(pool);
-    final text = sentenceWords(s, lx.lang).join(' ');
+    String text;
+    if (lx.tiled) {
+      // Taş dillerinde şifre taş düzeyindedir: her hece/karakter/akşara bir numara.
+      final enc = <String>[];
+      for (final s in list) {
+        final ws = [for (final w in sentenceWords(s, lx.lang)) lx.encode(w.replaceAll(RegExp(r'[，。、！？；：“”‘’（）《》,.!?;:]'), ''))];
+        if (ws.isEmpty || ws.any((w) => w == null || w.isEmpty)) continue;
+        final t = ws.join(' ');
+        if (t.replaceAll(' ', '').length >= 6 + d ~/ 3) enc.add(t);
+      }
+      if (enc.isEmpty) return null;
+      text = r.pick(enc);
+    } else {
+      final pool = [for (final s in list) if (s.length >= 18 + d * 2) s];
+      if (pool.isEmpty) return null;
+      final s = r.pick(pool);
+      text = sentenceWords(s, lx.lang).join(' ');
+    }
     final letters = <String>[];
     for (final ch in text.split('')) {
       if (ch != ' ' && !letters.contains(ch)) letters.add(ch);
@@ -376,6 +396,9 @@ class _CipherView extends StatefulWidget {
 
 class _CipherViewState extends State<_CipherView> with SecondsTicker, Flash {
   late CipherPuzzle p;
+
+  /// Taş dillerinde taş havuzu: metnin bütün taşları ve benzer şaşırtmacalar.
+  late final List<String> _pool = lx.keyPool(p.codes.keys, play.seed, size: p.codes.length + 6);
   final Map<int, String> guess = {};
   int? selCode;
   int hints = 0;
@@ -478,7 +501,7 @@ class _CipherViewState extends State<_CipherView> with SecondsTicker, Flash {
                   GestureDetector(
                     onTap: () => setState(() => selCode = p.codes[ch]),
                     child: Container(
-                      width: 30,
+                      width: lx.tiled ? 40 : 30,
                       margin: const EdgeInsets.symmetric(horizontal: 1),
                       child: Column(children: [
                         Container(
@@ -489,12 +512,15 @@ class _CipherViewState extends State<_CipherView> with SecondsTicker, Flash {
                             borderRadius: BorderRadius.circular(6),
                             border: Border(bottom: BorderSide(color: WColors.ink.withValues(alpha: 0.6), width: 2)),
                           ),
-                          child: Text(
-                            guess[p.codes[ch]] == null ? '' : lx.upCh(guess[p.codes[ch]]!),
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: p.givens.contains(guess[p.codes[ch]]) ? WColors.accent : WColors.ink,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              guess[p.codes[ch]] == null ? '' : lx.upCh(guess[p.codes[ch]]!),
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: p.givens.contains(guess[p.codes[ch]]) ? WColors.accent : WColors.ink,
+                              ),
                             ),
                           ),
                         ),
@@ -515,6 +541,7 @@ class _CipherViewState extends State<_CipherView> with SecondsTicker, Flash {
           if (c != null && !p.givens.contains(guess[c])) guess.remove(c);
         }),
         colors: colors,
+        pool: _pool,
       ),
       const SizedBox(height: 6),
     ]);
@@ -580,6 +607,9 @@ int countSudoku(List<int> g, int n, int bw, int bh, {int limit = 2}) {
   return count;
 }
 
+/// Taş dillerinde ilk satırı oluşturan kelimelerin taş sayıları.
+List<int> wordokuParts(int n) => n == 4 ? const [4] : (n == 6 ? const [3, 3] : const [3, 3, 3]);
+
 class WordokuKind extends WordKind {
   @override
   String get id => 'kelime-sudoku';
@@ -589,9 +619,27 @@ class WordokuKind extends WordKind {
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
     final n = d <= 3 ? 4 : (d <= 6 ? 6 : 9);
     final bw = n == 4 ? 2 : (n == 6 ? 3 : 3), bh = n == 4 ? 2 : (n == 6 ? 2 : 3);
-    final cands = [for (final w in lx.ofLength(n)) if (w.split('').toSet().length == n) w];
-    if (cands.isEmpty) return null;
-    final word = r.pick(cands.take(400).toList());
+    final String word;
+    if (lx.tiled) {
+      // Taş dillerinde dokuz/altı taşlı kelime yok: ilk satır art arda 3 ya da
+      // 2 taşlı kelimelerden oluşur (4'lükte tek dört taşlı kelime), taşlar farklı.
+      final parts = wordokuParts(n);
+      final seq = <String>[];
+      var guard = 0;
+      while (seq.length < parts.length && guard++ < 400) {
+        final pool = lx.pool(parts[seq.length], d);
+        if (pool.isEmpty) return null;
+        final w = r.pick(pool.take(1500).toList());
+        final all = seq.join() + w;
+        if (all.split('').toSet().length == all.length) seq.add(w);
+      }
+      if (seq.length < parts.length) return null;
+      word = seq.join();
+    } else {
+      final cands = [for (final w in lx.ofLength(n)) if (w.split('').toSet().length == n) w];
+      if (cands.isEmpty) return null;
+      word = r.pick(cands.take(400).toList());
+    }
     // Temel desen: (bh*(y%bh) + y~/bh + x) % n; satır ve sütun karıştırma.
     List<int> base = [for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) (bw * (y % bh) + y ~/ bh + x) % n];
     final perm = [for (var i = 0; i < n; i++) i];
@@ -635,7 +683,14 @@ class WordokuKind extends WordKind {
   bool check(WPuzzle p, Lexicon lx) {
     if (p is! WordokuPuzzle) return false;
     final g = [for (var i = 0; i < p.n * p.n; i++) p.given[i] ? p.solution[i] : -1];
-    return countSudoku(g, p.n, p.bw, p.bh) == 1 && lx.has(p.word);
+    if (countSudoku(g, p.n, p.bw, p.bh) != 1 || p.word.split('').toSet().length != p.n) return false;
+    if (!lx.tiled) return lx.has(p.word);
+    var i = 0;
+    for (final k in wordokuParts(p.n)) {
+      if (!lx.has(p.word.substring(i, i + k))) return false;
+      i += k;
+    }
+    return true;
   }
 
   @override

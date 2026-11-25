@@ -29,7 +29,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   for (final e in kWordKinds.entries) {
-    for (final lang in const ['tr', 'en', 'ar']) {
+    for (final lang in const ['tr', 'en', 'ar', 'ko', 'vi', 'th']) {
       testWidgets('${e.key} ($lang): ekran açılır, dokunuşlara dayanır', (tester) async {
         tester.view.physicalSize = const Size(1080, 2280);
         tester.view.devicePixelRatio = 2.75;

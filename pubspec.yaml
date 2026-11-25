@@ -1,5 +1,5 @@
 name: kelime_motoru
-description: "Kelime ailesinin ortak motoru: 27 dilde açık lisanslı kelime listeleri, 33 dilde atasözü ve kategori içeriği, bölüm üretimi, doğrulama ve oyun ekranları."
+description: "Kelime ailesinin ortak motoru: 33 dilde açık lisanslı kelime listeleri (6 taş dili dahil), atasözü ve kategori içeriği, bölüm üretimi, doğrulama ve oyun ekranları."
 publish_to: none
 version: 1.0.0
 

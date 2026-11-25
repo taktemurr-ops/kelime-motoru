@@ -155,12 +155,13 @@ class CrossKind extends WordKind {
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
-    final count = 6 + d;
-    final maxSide = 9 + d ~/ 2;
+    // Taş dillerinde kelimeler 2-4 taş: daha az ve daha kısa kelimeli ızgara.
+    final count = lx.tiled ? 5 + d ~/ 3 : 6 + d;
+    final maxSide = lx.tiled ? 7 + d ~/ 3 : 9 + d ~/ 2;
     final b = _Builder(style == 1, maxSide, maxSide + 2);
     final List<(String, String)> cands;
     if (style == 2) {
-      cands = [for (final w in lx.poolRange(3, 8, d)) (w, '')];
+      cands = [for (final w in lx.poolFit(3, 8, d)) (w, '')];
     } else {
       cands = [for (final c in clueList(lx.lang)) if (c.$1.length <= maxSide) c];
     }
@@ -168,15 +169,21 @@ class CrossKind extends WordKind {
     final order = List.of(cands);
     r.shuffle(order);
     // İlk kelime uzun olsun.
-    order.sort((a, b2) => (b2.$1.length >= 6 ? 1 : 0).compareTo(a.$1.length >= 6 ? 1 : 0));
+    final long = lx.tiled ? 3 : 6;
+    order.sort((a, b2) => (b2.$1.length >= long ? 1 : 0).compareTo(a.$1.length >= long ? 1 : 0));
     final used = <String>{};
     var tries = 0;
-    for (final c in order) {
-      if (b.slots.length >= count || tries++ > 900) break;
-      if (used.contains(c.$1)) continue;
-      if (b.tryPlace(c.$1, c.$2, r)) used.add(c.$1);
+    // Taş dillerinde kesişme az: aday listesi birkaç kez taranır.
+    for (var pass = 0; pass < (lx.tiled ? 8 : 1); pass++) {
+      for (final c in order) {
+        if (b.slots.length >= count || tries++ > (lx.tiled ? 6000 : 900)) break;
+        if (used.contains(c.$1)) continue;
+        if (b.tryPlace(c.$1, c.$2, r)) used.add(c.$1);
+      }
     }
-    if (b.slots.length < math.max(5, count - 3)) return null;
+    // Kare bulmacada (ipucu kutulu) taş dillerinde kesişme seyrek: en az dört kelime.
+    final least = lx.tiled && style == 1 ? 4 : 5;
+    if (b.slots.length < math.max(least, count - (lx.tiled ? 2 : 3))) return null;
     if (style == 2) {
       final letters = <String>[];
       for (final s in b.slots) {
@@ -208,7 +215,7 @@ class CrossKind extends WordKind {
         if (bx < 0 || by < 0 || p.cells[p.idx(bx, by)] != '#') return false;
       }
     }
-    return p.slots.length >= 5;
+    return p.slots.length >= (lx.tiled && style == 1 ? 4 : 5);
   }
 
   @override
@@ -515,7 +522,15 @@ class _CrossViewState extends State<_CrossView> with SecondsTicker, Flash {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Text(clueText, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: WColors.ink)),
         ),
-      WordKeyboard(lx: lx, onKey: _key, onEnter: () => setState(() => down = !down), onBack: _back, colors: keyColors),
+      WordKeyboard(
+        lx: lx,
+        onKey: _key,
+        onEnter: () => setState(() => down = !down),
+        onBack: _back,
+        colors: keyColors,
+        // Taş dillerinde seçili kelimenin taşları ve şaşırtmacalar (aday havuzu).
+        pool: lx.tiled && cur != null ? lx.keyPool(cur.word.split(''), play.seed ^ p.slots.indexOf(cur), size: cur.word.length + 7) : null,
+      ),
       const SizedBox(height: 6),
     ]);
   }
@@ -546,9 +561,15 @@ class _CrossViewState extends State<_CrossView> with SecondsTicker, Flash {
           if (label.isNotEmpty)
             Positioned(left: 2, top: 1, child: Text(label, style: TextStyle(fontSize: cs * 0.24, color: WColors.ink.withValues(alpha: 0.7)))),
           Center(
-            child: Text(
-              shown.isEmpty ? '' : lx.upCh(shown),
-              style: TextStyle(fontSize: cs * 0.55, fontWeight: given ? FontWeight.w900 : FontWeight.w700, color: given ? WColors.accent : WColors.ink),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: cs * 0.06),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  shown.isEmpty ? '' : lx.upCh(shown),
+                  style: TextStyle(fontSize: cs * 0.55, fontWeight: given ? FontWeight.w900 : FontWeight.w700, color: given ? WColors.accent : WColors.ink),
+                ),
+              ),
             ),
           ),
         ]),

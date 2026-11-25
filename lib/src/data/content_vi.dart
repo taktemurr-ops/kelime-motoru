@@ -1,6 +1,5 @@
-// vi: kelime ailesinin atasözü, kategori ve eş/zıt anlam içeriği.
+// vi: kelime ailesinin ipucu, atasözü, kategori ve eş/zıt anlam içeriği.
 // Stüdyonun kendi metinleri; atasözleri halk malıdır (kamu malı).
-// Bu dil yalnızca bütün-kelime türlerinde (atasözü, eş/zıt anlam, gruplama) içerik dilidir.
 
 const List<String> kProverbsVi = [
   'Có công mài sắt có ngày nên kim', 'Uống nước nhớ nguồn',
@@ -48,4 +47,58 @@ const List<String> kAntonymsVi = [
   'ngày|đêm', 'cứng|mềm', 'nhiều|ít', 'gần|xa',
   'nhẹ|nặng', 'nghèo|giàu', 'sớm|muộn', 'mở|đóng',
   'khỏe|yếu', 'vui|buồn',
+];
+
+/// İpuçlu türler (çengel, kare bulmaca, akrostiş): yanıt|ipucu. Yanıtlar taş dizisine
+/// çevrilir (bkz. Lexicon.encode); taşlara bölünemeyen yanıt atlanır.
+const List<String> kCluesVi = [
+  'quả táo|Trái cây màu đỏ hoặc xanh, giòn ngọt', 'quả chuối|Trái cây dài, vỏ vàng', 'dưa hấu|Quả to, vỏ xanh, ruột đỏ, ăn mùa hè',
+  'mặt trời|Ngôi sao chiếu sáng ban ngày', 'mặt trăng|Vầng sáng trên trời ban đêm', 'ngôi sao|Đốm sáng lấp lánh trên trời đêm',
+  'biển cả|Vùng nước mặn mênh mông', 'dòng sông|Nước chảy từ núi ra biển', 'hồ nước|Vùng nước lớn có bờ bao quanh',
+  'núi non|Nơi đất cao chót vót', 'rừng rậm|Nơi có rất nhiều cây cối', 'bầu trời|Nơi chim bay và mây trôi',
+  'đám mây|Thứ trắng bồng bềnh trên trời', 'cầu vồng|Dải bảy màu sau cơn mưa', 'mùa xuân|Mùa cây đâm chồi, có Tết',
+  'mùa hè|Mùa nóng nhất trong năm', 'mùa thu|Mùa lá vàng rơi', 'mùa đông|Mùa lạnh nhất trong năm',
+  'buổi sáng|Đầu ngày, lúc mặt trời mọc', 'buổi tối|Sau khi mặt trời lặn', 'trường học|Nơi học sinh đến học',
+  'học sinh|Người đi học ở trường', 'giáo viên|Người dạy học', 'bác sĩ|Người chữa bệnh',
+  'bệnh viện|Nơi chữa bệnh', 'cảnh sát|Người giữ gìn trật tự', 'đầu bếp|Người nấu ăn trong nhà hàng',
+  'nông dân|Người làm ruộng', 'ca sĩ|Người hát', 'họa sĩ|Người vẽ tranh',
+  'bạn bè|Những người thân thiết, hay chơi cùng', 'gia đình|Cha mẹ, anh chị em sống cùng nhau', 'ông bà|Cha mẹ của bố mẹ',
+  'con mèo|Con vật kêu meo meo, bắt chuột', 'con chó|Con vật sủa gâu gâu, giữ nhà', 'con hổ|Thú lớn có vằn, chúa sơn lâm',
+  'con voi|Con vật to, có vòi dài', 'con khỉ|Con vật leo trèo giỏi', 'con thỏ|Con vật tai dài, ăn cà rốt',
+  'con gà|Gia cầm gáy ò ó o', 'con cá|Sống dưới nước, thở bằng mang', 'con bướm|Côn trùng cánh đẹp bay quanh hoa',
+  'bánh mì|Bánh nướng từ bột mì', 'cơm tấm|Món cơm từ gạo tấm của miền Nam', 'phở bò|Món phở nấu với thịt bò',
+  'sữa tươi|Đồ uống màu trắng từ bò', 'cà phê|Đồ uống màu nâu, đắng, giúp tỉnh táo', 'nước mắm|Nước chấm làm từ cá',
+  'trái cây|Táo, cam, chuối gọi chung là', 'rau xanh|Cải, muống gọi chung là', 'cái bàn|Đồ dùng để ăn và viết',
+  'cái ghế|Đồ dùng để ngồi', 'cửa sổ|Lỗ trên tường để lấy ánh sáng', 'ngôi nhà|Nơi con người ở',
+  'máy tính|Máy dùng để làm việc, lên mạng', 'điện thoại|Máy dùng để gọi người ở xa', 'ti vi|Máy để xem chương trình',
+  'âm nhạc|Nghệ thuật của âm thanh', 'xe đạp|Xe hai bánh đạp bằng chân', 'xe máy|Xe hai bánh chạy bằng xăng',
+  'ô tô|Xe bốn bánh', 'máy bay|Phương tiện bay trên trời', 'tàu hỏa|Xe chạy trên đường ray',
+  'thư viện|Nơi mượn sách', 'công viên|Nơi đi dạo, vui chơi', 'chợ cá|Nơi bán cá tươi',
+  'ngân hàng|Nơi gửi và rút tiền', 'sinh nhật|Ngày ra đời', 'món quà|Thứ tặng cho người khác',
+  'vui vẻ|Rất vui, hớn hở', 'đôi mắt|Bộ phận dùng để nhìn', 'lỗ tai|Bộ phận dùng để nghe',
+  'cái mũi|Bộ phận dùng để ngửi', 'mái tóc|Thứ mọc trên đầu', 'quần áo|Thứ mặc trên người',
+  'cái mũ|Đội trên đầu', 'đôi giày|Mang dưới chân', 'cái ô|Che khi trời mưa',
+  'chìa khóa|Dùng để mở ổ khóa', 'đồng hồ|Vật cho biết giờ', 'bản đồ|Hình vẽ đường đi và thành phố',
+  'bóng đá|Môn thể thao đá bóng', 'bơi lội|Môn thể thao dưới nước', 'chạy bộ|Môn thể thao chạy',
+  'cuốn sách|Thứ để đọc, có nhiều trang', 'bút chì|Bút viết có thể tẩy', 'quyển vở|Tập giấy để ghi bài',
+  'ánh sáng|Thứ giúp ta nhìn thấy', 'hạnh phúc|Cảm giác vui sướng, mãn nguyện', 'tình yêu|Tình cảm yêu thương',
+  'nhật ký|Sổ ghi chép chuyện hằng ngày', 'học trò|Người theo thầy học', 'học tập|Việc học hành nói chung',
+  'tập thể dục|Vận động cho khỏe người', 'thể thao|Bóng đá, bơi lội gọi chung là', 'thao trường|Bãi tập của bộ đội',
+  'trường thi|Nơi tổ chức kỳ thi', 'thi đấu|Tranh tài trong thể thao', 'đấu trường|Nơi diễn ra trận đấu',
+  'nhà ga|Nơi tàu hỏa đỗ đón khách', 'nhà hàng|Nơi bán đồ ăn uống', 'hàng xóm|Người ở nhà bên cạnh',
+  'xóm làng|Nơi nhiều nhà ở gần nhau ở quê', 'làng quê|Vùng nông thôn', 'quê hương|Nơi mình sinh ra lớn lên',
+  'hương thơm|Mùi dễ chịu', 'nước mắt|Giọt nước chảy ra khi khóc', 'mắt kính|Đeo cho mắt nhìn rõ hơn',
+  'kính lúp|Dụng cụ phóng to vật nhỏ', 'nước ngọt|Đồ uống có ga', 'ngọt ngào|Rất ngọt, dịu dàng',
+  'bánh ngọt|Món bánh có đường', 'bánh chưng|Bánh vuông ngày Tết', 'mùa mưa|Thời gian mưa nhiều trong năm',
+  'mưa rào|Mưa to, đến nhanh tạnh nhanh', 'cây cối|Cây nói chung', 'cây xanh|Cây trồng làm mát đường phố',
+  'xanh lá|Màu của lá cây', 'lá thư|Tờ giấy viết gửi người khác', 'viện bảo tàng|Nơi trưng bày hiện vật',
+  'bảo vệ|Giữ gìn, che chở', 'vệ sinh|Giữ cho sạch sẽ', 'sinh viên|Người học đại học',
+  'đại học|Bậc học sau phổ thông', 'học phí|Tiền đóng để đi học', 'phí tổn|Tiền phải chi ra',
+  'bóng bay|Đồ chơi bơm hơi bay lên', 'bay lượn|Chim bay vòng vòng', 'máy ảnh|Dụng cụ chụp hình',
+  'hình ảnh|Bức hình, tấm ảnh', 'ảnh hưởng|Tác động đến', 'nhà văn|Người viết sách',
+  'văn hóa|Phong tục, nghệ thuật của một dân tộc', 'hoa hồng|Loài hoa có gai', 'hồng hào|Da dẻ khỏe mạnh',
+  'hoa sen|Quốc hoa của Việt Nam', 'sen vàng|Loại sen quý màu vàng', 'con đường|Lối đi lại',
+  'đường phố|Đường trong thành phố', 'phố cổ|Khu phố có nhà xưa', 'cổ tích|Truyện xưa có tiên, bụt',
+  'trái đất|Hành tinh chúng ta sống', 'đất nước|Tổ quốc, quốc gia', 'nước ngoài|Quốc gia khác',
+  'ngoài trời|Không ở trong nhà', 'trời mưa|Lúc nước rơi từ trên trời',
 ];

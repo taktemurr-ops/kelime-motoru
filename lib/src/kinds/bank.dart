@@ -44,6 +44,18 @@ class BankKind extends WordKind {
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
     switch (mode) {
       case 0:
+        if (lx.tiled) {
+          // Taş dillerinde raf birkaç kelimenin taşlarından kurulur.
+          final rack = tileRack(lx, d <= 3 ? 6 : (d <= 6 ? 7 : 8), d, r);
+          final pool = letterCounts(rack.join());
+          final valid = spellable(lx, pool, minLen: 2);
+          final common = spellable(lx, pool, minLen: 2, limit: 2500 + d * 900);
+          final want = math.min(common.length, 4 + d);
+          if (want < 3) return null;
+          final targets = common.take(want).toList()
+            ..sort((a, b) => a.length != b.length ? a.length.compareTo(b.length) : a.compareTo(b));
+          return BankPuzzle(rack, targets, valid, targets.length, 0);
+        }
         final len = d <= 3 ? 5 : (d <= 6 ? 6 : 7);
         final base = r.pick(lx.pool(len, d));
         final pool = letterCounts(base);
@@ -58,6 +70,16 @@ class BankKind extends WordKind {
         final valid = spellable(lx, pool);
         return BankPuzzle(scramble(base, r), targets, valid, targets.length, 0);
       case 1:
+        if (lx.tiled) {
+          final rack = tileRack(lx, d <= 5 ? 7 : 8, d, r);
+          final valid = spellable(lx, letterCounts(rack.join()), minLen: 2);
+          if (valid.length < 8) return null;
+          final need = math.max(4, (valid.length * (0.22 + d * 0.025)).ceil());
+          // "Tam kelime" yerine en uzun kelimeler hedeftir.
+          final top = valid.fold<int>(0, (a, w) => math.max(a, w.length));
+          final longest = valid.where((w) => w.length == top).toList();
+          return BankPuzzle(rack, longest, valid, math.min(need, valid.length), 160 - d * 7);
+        }
         final len = d <= 5 ? 6 : 7;
         final base = r.pick(lx.pool(len, d));
         final pool = letterCounts(base);
@@ -67,6 +89,35 @@ class BankKind extends WordKind {
         final fulls = valid.where((w) => w.length == len).toList();
         return BankPuzzle(scramble(base, r), fulls, valid, math.min(need, valid.length), 160 - d * 7);
       default:
+        if (lx.tiled) {
+          // Taş peteği: ortadaki taşı içeren kelimelerin taşlarından yedi taş
+          // (birkaç orta taş denenir).
+          for (var attempt = 0; attempt < 6; attempt++) {
+            final center = lx.letters[r.nextInt(math.min(40, lx.letters.length))];
+            final set = <String>[center];
+            for (final w in lx.words.take(6000)) {
+              if (set.length >= 7) break;
+              if (!w.contains(center) || w.length > 3) continue;
+              final add = w.split('').where((c) => !set.contains(c)).toSet();
+              if (set.length + add.length <= 7 && r.chance(0.5)) set.addAll(add);
+            }
+            for (final ch in lx.letters.take(60)) {
+              if (set.length >= 7) break;
+              if (!set.contains(ch) && r.chance(0.3)) set.add(ch);
+            }
+            if (set.length < 7) continue;
+            r.shuffle(set);
+            final pool = {for (final ch in set) ch: 99};
+            final valid = spellable(lx, pool, minLen: 2, must: center);
+            if (valid.length < 8) continue;
+            final maxScore = valid.fold<int>(0, (a, w) => a + beeScore(w, set, true));
+            final need = (maxScore * (0.22 + d * 0.035)).round();
+            final top = valid.fold<int>(0, (a, w) => math.max(a, w.split('').toSet().length));
+            final stars = valid.where((w) => w.split('').toSet().length == top).toList();
+            return BankPuzzle(set, stars, valid, math.max(need, 6), 0, center: center);
+          }
+          return null;
+        }
         final cands = <String>[];
         for (final w in lx.words) {
           if (w.length >= 7 && w.length <= 10 && w.split('').toSet().length == 7) cands.add(w);
@@ -103,7 +154,8 @@ class BankKind extends WordKind {
 }
 
 /// Petek puanı: 4 harf 1, uzun kelime harf sayısı, bütün harfler +7.
-int beeScore(String w, List<String> set) {
+int beeScore(String w, List<String> set, [bool tiled = false]) {
+  if (tiled) return (w.length == 2 ? 1 : w.length + 1) + (w.split('').toSet().length == set.length ? 7 : 0);
   final base = w.length == 4 ? 1 : w.length;
   return base + (w.split('').toSet().length == set.length ? 7 : 0);
 }
@@ -152,11 +204,11 @@ class _BankViewState extends State<_BankView> with SecondsTicker, Flash {
         's': seconds,
       });
 
-  int get score => widget.mode == 2 ? found.fold<int>(0, (a, w) => a + beeScore(w, p.letters)) : found.length;
+  int get score => widget.mode == 2 ? found.fold<int>(0, (a, w) => a + beeScore(w, p.letters, lx.tiled)) : found.length;
 
   bool get goalMet {
     if (widget.mode == 0) return p.targets.every(found.contains);
-    if (widget.mode == 1) return found.length >= p.need && found.any((w) => w.length == p.letters.length);
+    if (widget.mode == 1) return found.length >= p.need && found.any((w) => lx.tiled ? p.targets.contains(w) : w.length == p.letters.length);
     return score >= p.need;
   }
 
@@ -175,7 +227,7 @@ class _BankViewState extends State<_BankView> with SecondsTicker, Flash {
     if (ended) return;
     final w = picked.map((i) => letters[i]).join();
     setState(() => picked.clear());
-    final min = widget.mode == 2 ? 4 : 3;
+    final min = lx.tiled ? 2 : (widget.mode == 2 ? 4 : 3);
     if (w.length < min) {
       flash(kt(play.lang, 'short'));
       return;
@@ -379,7 +431,8 @@ class AnagramKind extends WordKind {
     final words = <String>[];
     var guard = 0;
     while (words.length < n && guard++ < 300) {
-      final len = 4 + r.nextInt(2 + d ~/ 3);
+      // Taş dillerinde en az üç taş (Çincede dört karakterli deyimler de gelir).
+      final len = lx.tiled ? math.max(3, lx.fit(6 + r.nextInt(2 + d ~/ 3))) : 4 + r.nextInt(2 + d ~/ 3);
       final pool = lx.pool(len, d);
       if (pool.isEmpty) continue;
       final w = r.pick(pool);

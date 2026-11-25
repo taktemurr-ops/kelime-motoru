@@ -40,8 +40,9 @@ class DuelKind extends WordKind {
     final rounds = <DuelRound>[];
     const time = 60;
     for (var k = 0; k < 3; k++) {
-      final base = r.pick(lx.pool(7, d));
-      final valid = spellable(lx, letterCounts(base));
+      // Taş dillerinde raf birkaç kelimenin taşlarından kurulur.
+      final rack = lx.tiled ? tileRack(lx, 8, d, r) : scramble(r.pick(lx.pool(7, d)), r);
+      final valid = spellable(lx, letterCounts(rack.join()), minLen: lx.minLen);
       if (valid.length < 6) return null;
       final frac = 0.16 + d * 0.045;
       final n = math.max(2, (valid.length * frac).round());
@@ -53,7 +54,7 @@ class DuelKind extends WordKind {
       }
       if (bot.isEmpty) bot.add(valid.first);
       final times = [for (var i = 0; i < bot.length; i++) 4 + r.nextInt(time - 6)]..sort();
-      rounds.add(DuelRound(scramble(base, r), valid, bot, times));
+      rounds.add(DuelRound(rack, valid, bot, times));
     }
     return DuelPuzzle(rounds, time);
   }
@@ -228,7 +229,7 @@ class _DuelViewState extends State<_DuelView> with SecondsTicker, Flash {
     if (ended || between) return;
     final w = picked.map((i) => letters[i]).join();
     setState(() => picked = []);
-    if (w.length < 3) return flash(kt(play.lang, 'short'));
+    if (w.length < lx.minLen) return flash(kt(play.lang, 'short'));
     if (found.contains(w)) return flash(kt(play.lang, 'already'));
     if (!rd.valid.contains(w)) {
       play.ctx.sfx(Sfx.error);
@@ -355,19 +356,24 @@ class LettersNumbersKind extends WordKind {
   int get players => 2;
 
   LnRound? _letters(Lexicon lx, int d, SeededRandom r) {
-    final len = 7 + r.nextInt(3);
-    final base = r.pick(lx.pool(len, d));
-    final ls = base.split('');
-    while (ls.length < 9) {
-      ls.add(lx.randomLetter(r));
+    final List<String> ls;
+    if (lx.tiled) {
+      ls = tileRack(lx, 9, d, r);
+    } else {
+      final len = 7 + r.nextInt(3);
+      final base = r.pick(lx.pool(len, d));
+      ls = base.split('');
+      while (ls.length < 9) {
+        ls.add(lx.randomLetter(r));
+      }
+      r.shuffle(ls);
     }
-    r.shuffle(ls);
-    final valid = spellable(lx, letterCounts(ls.join()));
+    final valid = spellable(lx, letterCounts(ls.join()), minLen: lx.minLen);
     if (valid.isEmpty) return null;
     valid.sort((a, b) => b.length.compareTo(a.length));
     final best = valid.first;
     final drop = d >= 9 ? 0 : (d >= 6 ? 1 : (d >= 3 ? 2 : 3));
-    final want = math.max(3, best.length - drop - r.nextInt(2));
+    final want = math.max(lx.minLen, best.length - drop - r.nextInt(2));
     final bot = valid.firstWhere((w) => w.length <= want, orElse: () => valid.last);
     return LnRound.letters(ls, bot, best);
   }
@@ -522,7 +528,7 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
     final body = m.substring('R$r:'.length);
     final rr = p.rounds[r];
     if (rr.numbers) return ('', int.tryParse(body) ?? -1);
-    final ok = body.length >= 3 && lx.has(body) && canSpell(body, letterCounts(rr.letters.join()));
+    final ok = body.length >= lx.minLen && lx.has(body) && canSpell(body, letterCounts(rr.letters.join()));
     return (ok ? body : '', 0);
   }
 
@@ -628,7 +634,7 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
   void _submitWord() {
     final w = picked.map((i) => rd.letters[i]).join();
     setState(() => picked = []);
-    if (w.length < 3) return flash(kt(play.lang, 'short'));
+    if (w.length < lx.minLen) return flash(kt(play.lang, 'short'));
     if (!lx.has(w)) {
       play.ctx.sfx(Sfx.error);
       return flash(kt(play.lang, 'notWord'));

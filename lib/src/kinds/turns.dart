@@ -25,8 +25,12 @@ class PetalKind extends WordKind {
   const PetalKind();
 
   @override
+  bool get keyed => true;
+
+  @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
-    final len = 5 + math.min<int>(4, d ~/ 2);
+    // Taş dillerinde daha uzun kelime (taş sayısı az) ve taş havuzu.
+    final len = lx.fit(5 + math.min<int>(4, d ~/ 2) + (lx.tiled ? 2 : 0));
     final pool = lx.pool(len, d);
     if (pool.isEmpty) return null;
     final w = r.pick(pool);
@@ -51,6 +55,9 @@ class _PetalView extends StatefulWidget {
 
 class _PetalViewState extends State<_PetalView> with SecondsTicker, Flash {
   late PetalPuzzle p;
+
+  /// Taş dillerinde taş havuzu: kelimenin taşları + canlardan fazla şaşırtmaca.
+  late final List<String> _pool = lx.keyPool(p.word.split(''), play.seed, size: p.word.split('').toSet().length + p.lives + 4);
   final Set<String> tried = {};
   int hints = 0;
 
@@ -119,6 +126,7 @@ class _PetalViewState extends State<_PetalView> with SecondsTicker, Flash {
   @override
   Widget build(BuildContext context) {
     final colors = <String, Color>{for (final c in tried) c: p.word.contains(c) ? WColors.hit : WColors.miss};
+    final read = lx.reading(p.word);
     return Column(children: [
       WordBar(play: play, left: clock(), status: '${kt(play.lang, 'tries')}: ${p.lives - wrong}', onHint: _hint),
       flashLine(),
@@ -136,10 +144,16 @@ class _PetalViewState extends State<_PetalView> with SecondsTicker, Flash {
                   fill: tried.contains(p.word[i]) ? null : WColors.paper,
                 ),
             ]),
+            // Çincede ipucu alındıktan sonra okunuş (pinyin) görünür.
+            if (read != null && (hints > 0 || ended))
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(read, style: const TextStyle(fontSize: 16, color: WColors.ink, fontWeight: FontWeight.w600)),
+              ),
           ]);
         }),
       ),
-      WordKeyboard(lx: lx, onKey: _key, onEnter: () {}, onBack: () {}, colors: colors, showEnter: false),
+      WordKeyboard(lx: lx, onKey: _key, onEnter: () {}, onBack: () {}, colors: colors, showEnter: false, pool: _pool),
       const SizedBox(height: 6),
     ]);
   }
@@ -194,19 +208,43 @@ bool oneApart(String a, String b) {
   return diff == 1;
 }
 
+/// Merdiven komşuluk dizini: bir harfi (taşı) boşaltılmış desen → kelimeler.
+Map<String, List<String>> ladderIndex(Iterable<String> words) {
+  final m = <String, List<String>>{};
+  for (final w in words) {
+    for (var i = 0; i < w.length; i++) {
+      m.putIfAbsent('${w.substring(0, i)}\u0000${w.substring(i + 1)}', () => <String>[]).add(w);
+    }
+  }
+  return m;
+}
+
+/// Bir harfi (taşı) farklı komşu kelimeler.
+Iterable<String> ladderNext(Map<String, List<String>> nb, String w) sync* {
+  for (var i = 0; i < w.length; i++) {
+    for (final x in nb['${w.substring(0, i)}\u0000${w.substring(i + 1)}'] ?? const <String>[]) {
+      if (x != w) yield x;
+    }
+  }
+}
+
 class LadderKind extends WordKind {
   @override
   String get id => 'kelime-merdiveni';
   const LadderKind();
 
+  /// Korecede jamo değiştirilir (사랑 → 사람); öbür taş dillerinde taş (hece/karakter).
+  @override
+  bool get keyed => true;
+
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
-    final len = d <= 6 ? 4 : 5;
+    final len = lx.fit(d <= 6 ? 4 : 5);
     final words = lx.ofLength(len);
     final pool = words.sublist(0, math.min(words.length, 1200 + d * 150));
     if (pool.length < 50) return null;
     final want = 3 + d ~/ 2;
-    final set = pool.toSet();
+    final nb = ladderIndex(pool);
     final start = r.pick(pool.sublist(0, math.min(pool.length, 400)));
     // Genişlik öncelikli arama.
     final prev = <String, String>{start: ''};
@@ -216,14 +254,10 @@ class LadderKind extends WordKind {
     for (var depth = 0; depth < want && frontier.isNotEmpty; depth++) {
       final nxt = <String>[];
       for (final w in frontier) {
-        for (var i = 0; i < len; i++) {
-          for (final ch in lx.letters) {
-            if (ch == w[i]) continue;
-            final cand = w.substring(0, i) + ch + w.substring(i + 1);
-            if (set.contains(cand) && !prev.containsKey(cand)) {
-              prev[cand] = w;
-              nxt.add(cand);
-            }
+        for (final cand in ladderNext(nb, w)) {
+          if (!prev.containsKey(cand)) {
+            prev[cand] = w;
+            nxt.add(cand);
           }
         }
       }
@@ -267,6 +301,30 @@ class _LadderView extends StatefulWidget {
 class _LadderViewState extends State<_LadderView> with SecondsTicker, Flash {
   late LadderPuzzle p;
   final List<String> steps = [];
+  Map<String, List<String>>? _nb;
+  String? _poolFor;
+  List<String> _pool = const [];
+
+  /// Taş dillerinde taş havuzu: son kelimeden bir adımda gidilebilecek
+  /// kelimelerin yeni taşları, hedefin taşları ve şaşırtmacalar.
+  List<String> get pool {
+    if (!lx.tiled) return const [];
+    if (_poolFor == last) return _pool;
+    final nb = _nb ??= ladderIndex(lx.ofLength(p.start.length));
+    final need = <String>[];
+    final pi = p.path.indexOf(last);
+    if (pi >= 0 && pi + 1 < p.path.length) need.addAll(p.path[pi + 1].split(''));
+    for (final x in ladderNext(nb, last)) {
+      if (need.length >= 8) break;
+      for (var i = 0; i < x.length; i++) {
+        if (x[i] != last[i] && !need.contains(x[i])) need.add(x[i]);
+      }
+    }
+    need.addAll(last.split(''));
+    need.addAll(p.goal.split(''));
+    _poolFor = last;
+    return _pool = lx.keyPool(need, play.seed ^ steps.length, size: need.toSet().length + 4);
+  }
   String input = '';
   int hints = 0, mistakes = 0;
 
@@ -394,6 +452,7 @@ class _LadderViewState extends State<_LadderView> with SecondsTicker, Flash {
       ),
       WordKeyboard(
         lx: lx,
+        pool: pool,
         onKey: (ch) {
           if (ended || input.length >= p.start.length) return;
           setState(() => input += ch);
@@ -437,7 +496,7 @@ class ChainKind extends WordKind {
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
-    final w = r.pick(lx.pool(5, d));
+    final w = r.pick(lx.pool(lx.fit(5), d));
     return ChainPuzzle(w, 5 + d ~/ 2, 30 - d * 2);
   }
 
@@ -458,6 +517,27 @@ class _ChainView extends StatefulWidget {
 
 class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
   late ChainPuzzle p;
+  int _poolAt = -1;
+  List<String> _pool = const [];
+
+  /// Taş dillerinde taş havuzu: istenen taşla başlayan birkaç olası kelimenin
+  /// taşları ve şaşırtmacalar (끝말잇기 / 成语接龙 benzeri).
+  List<String> get pool {
+    if (!lx.tiled) return const [];
+    if (_poolAt == chain.length) return _pool;
+    final ch = need;
+    final need0 = <String>[ch];
+    var n = 0;
+    for (final w in lx.words) {
+      if (n >= 4) break;
+      if (w.startsWith(ch) && !chain.contains(w)) {
+        n++;
+        need0.addAll(w.split(''));
+      }
+    }
+    _poolAt = chain.length;
+    return _pool = lx.keyPool(need0, play.seed ^ chain.length, size: need0.toSet().length + 5);
+  }
   final List<String> chain = [];
   final List<bool> mine = [];
   String input = '';
@@ -503,7 +583,7 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
   String? _valid(String mv) {
     if (!mv.startsWith('W:')) return null;
     final w = mv.substring(2);
-    if (w.length < 3 || !w.startsWith(need) || chain.contains(w) || !lx.has(w)) return null;
+    if (w.length < lx.minLen || !w.startsWith(need) || chain.contains(w) || !lx.has(w)) return null;
     return w;
   }
 
@@ -618,7 +698,7 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
     if (ended || botThinking) return;
     final w = input;
     setState(() => input = '');
-    if (w.length < 3) return flash(kt(play.lang, 'short'));
+    if (w.length < lx.minLen) return flash(kt(play.lang, 'short'));
     if (!w.startsWith(need)) {
       play.ctx.sfx(Sfx.error);
       return flash('${lx.upCh(need)}…');
@@ -652,7 +732,7 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
     final ch = need;
     String? w;
     for (final x in lx.words) {
-      if (x.startsWith(ch) && !chain.contains(x) && x.length >= 3) {
+      if (x.startsWith(ch) && !chain.contains(x) && x.length >= lx.minLen) {
         w = x;
         break;
       }
@@ -706,6 +786,7 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
       ),
       WordKeyboard(
         lx: lx,
+        pool: pool,
         onKey: (ch) {
           if (ended || input.length >= 12) return;
           setState(() => input += ch);

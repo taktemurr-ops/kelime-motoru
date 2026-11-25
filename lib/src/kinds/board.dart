@@ -55,6 +55,17 @@ class BoardKind extends WordKind {
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
+    if (lx.tiled) {
+      // Taş dillerinde yüzlerce taş var: torba sık kelimelerin taşlarından
+      // kurulur (raflarda kelime kurulabilsin diye), 90 taş.
+      final bag = <String>[];
+      final pool = lx.poolRange(2, 3, math.max(1, d ~/ 2));
+      while (bag.length < 90) {
+        bag.addAll(r.pick(pool).split(''));
+      }
+      r.shuffle(bag);
+      return BoardPuzzle(bag, 6 + d ~/ 3);
+    }
     // Sıklığa göre 84 taş (her harften en az bir).
     final total = lx.letterWeights.fold<int>(0, (a, b) => a + b);
     final bag = <String>[];

@@ -30,8 +30,8 @@ import 'content_hi.dart';
 import 'content_bn.dart';
 import 'content_th.dart';
 
-/// TR ve EN dışındaki içerik dillerinin içerikleri (ipucu yalnızca kelime
-/// listesi olan dillerde; vi, ko, zh, hi, bn, th bütün-kelime türlerindedir).
+/// TR ve EN dışındaki içerik dillerinin içerikleri (33 dilin hepsinde ipucu,
+/// atasözü, kategori ve eş/zıt anlam).
 const Map<String, List<String>> kCluesByLang = {
   'de': kCluesDe,
   'es': kCluesEs,
@@ -58,6 +58,12 @@ const Map<String, List<String>> kCluesByLang = {
   'he': kCluesHe,
   'ur': kCluesUr,
   'ja': kCluesJa,
+  'vi': kCluesVi,
+  'ko': kCluesKo,
+  'zh': kCluesZh,
+  'hi': kCluesHi,
+  'bn': kCluesBn,
+  'th': kCluesTh,
 };
 const Map<String, List<String>> kProverbsByLang = {
   'de': kProverbsDe,

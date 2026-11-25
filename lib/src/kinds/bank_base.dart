@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:studio_core/core/rng.dart';
 
@@ -16,6 +18,38 @@ List<String> spellable(Lexicon lx, Map<String, int> pool, {int minLen = 3, int? 
     if (canSpell(w, pool)) out.add(w);
   }
   return out;
+}
+
+/// Taş dillerinde raf: sık kelimelerin taşlarından [size] taş (en az iki
+/// kelime tam olarak kurulabilir), karışık sırayla.
+List<String> tileRack(Lexicon lx, int size, int d, SeededRandom r) {
+  final rack = <String>[];
+  // Yalnızca sık taşlardan oluşan kelimeler: raf taşları birbiriyle çok kelime kurar
+  // (Taycada binlerce hece var; rastgele raf neredeyse hiç kelime vermez).
+  final common = lx.letters.take(120 + d * 15).toSet();
+  final pool = [for (final w in lx.poolRange(2, 4, d)) if (w.split('').every(common.contains)) w];
+  if (pool.isEmpty) pool.addAll(lx.poolRange(2, 3, d));
+  var guard = 0;
+  while (rack.length < size && guard++ < 300) {
+    final w = r.pick(pool);
+    final have = letterCounts(rack.join());
+    final add = <String>[];
+    final need = letterCounts(w);
+    for (final e in need.entries) {
+      for (var k = have[e.key] ?? 0; k < e.value; k++) {
+        add.add(e.key);
+      }
+    }
+    // Rafa ortak taşı olan kelimeleri tercih et (daha çok kelime çıkar).
+    if (rack.isNotEmpty && add.length == w.length && r.chance(0.8)) continue;
+    if (rack.length + add.length > size) continue;
+    rack.addAll(add);
+  }
+  while (rack.length < size) {
+    rack.add(lx.letters[r.nextInt(math.min(60, lx.letters.length))]);
+  }
+  r.shuffle(rack);
+  return rack;
 }
 
 /// Harfleri karıştır (asıl sırayla aynı kalmasın).

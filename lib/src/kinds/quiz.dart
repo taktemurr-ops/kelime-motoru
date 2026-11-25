@@ -29,6 +29,7 @@ class QuizPuzzle extends WPuzzle {
 
 /// Yanlış yazımlar: bitişik harf takası, harf düşürme, ikileme, ünlü değişimi.
 List<String> misspellings(String w, Lexicon lx, SeededRandom r, int n) {
+  if (lx.tiled) return tileMisspellings(w, lx, r, n);
   const vowelsAll = 'aeiouıöüyåäæøéáóúíàèùâêîôûăεηιουωаеиоуыэюяєії';
   final vowels = [for (final ch in lx.letters) if (vowelsAll.contains(ch)) ch];
   final out = <String>{};
@@ -57,6 +58,28 @@ List<String> misspellings(String w, Lexicon lx, SeededRandom r, int n) {
   return out.toList();
 }
 
+/// Taş dillerinde yanlış yazım: bir (zorda iki) taş benzeriyle değişir —
+/// Vietnamcada aynı hecenin başka tonu, Çincede aynı okunuşlu başka karakter
+/// (错别字), Hint yazılarında kısa/uzun sesli ya da nazal işaret, Taycada ton
+/// işareti, Korecede aynı ilk ünsüzlü başka hece. Sonuç sözlükte olmamalı.
+List<String> tileMisspellings(String w, Lexicon lx, SeededRandom r, int n) {
+  final out = <String>{};
+  var guard = 0;
+  while (out.length < n && guard++ < 120) {
+    final chars = w.split('');
+    final swaps = guard > 60 && chars.length > 2 ? 2 : 1;
+    for (var k = 0; k < swaps; k++) {
+      final i = r.nextInt(chars.length);
+      final kin = lx.kin(w[i]);
+      if (kin.isEmpty) continue;
+      chars[i] = kin[r.nextInt(math.min(kin.length, 5))];
+    }
+    final m = chars.join();
+    if (m != w && !lx.has(m)) out.add(m);
+  }
+  return out.toList();
+}
+
 class SpellKind extends WordKind {
   @override
   String get id => 'heceleme';
@@ -69,7 +92,7 @@ class SpellKind extends WordKind {
     final used = <String>{};
     var guard = 0;
     while (qs.length < n && guard++ < 200) {
-      final w = r.pick(lx.poolRange(5, 6 + d ~/ 3, d));
+      final w = r.pick(lx.poolFit(5, 6 + d ~/ 3, d));
       if (!used.add(w)) continue;
       final bad = misspellings(w, lx, r, d <= 3 ? 2 : 3);
       if (bad.length < 2) continue;
@@ -684,7 +707,7 @@ class AcrosticKind extends WordKind {
     for (final c in clues) {
       byFirst.putIfAbsent(c.$1[0], () => []).add(c);
     }
-    final len = 4 + math.min<int>(4, d ~/ 2);
+    final len = lx.fit(4 + math.min<int>(4, d ~/ 2));
     final keys = [for (final w in lx.pool(len, d)) if (w.split('').every(byFirst.containsKey)) w];
     if (keys.isEmpty) return null;
     final key = r.pick(keys);
@@ -832,6 +855,8 @@ class _AcrosticViewState extends State<_AcrosticView> with SecondsTicker, Flash 
       ),
       WordKeyboard(
         lx: lx,
+        // Taş dillerinde seçili yanıtın taşları ve şaşırtmacalar.
+        pool: lx.tiled ? lx.keyPool(p.answers[sel].split(''), play.seed ^ sel, size: p.answers[sel].length + 7) : null,
         onKey: (ch) {
           if (ended || done[sel] || typed[sel].length >= p.answers[sel].length) return;
           setState(() => typed[sel] += ch);

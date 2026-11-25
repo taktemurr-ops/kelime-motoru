@@ -27,23 +27,38 @@ import 'data/words_fa.dart';
 import 'data/words_he.dart';
 import 'data/words_ur.dart';
 import 'data/words_ja.dart';
+import 'data/words_bn.dart';
+import 'data/words_hi.dart';
+import 'data/words_ko.dart';
+import 'data/words_th.dart';
+import 'data/words_vi.dart';
+import 'data/words_zh.dart';
+import 'tiles.dart';
 
-/// Kelime listesi olan diller: harf taşlı, klavyeli ve ızgaralı bütün türler
-/// bu dillerde oynanır. Japoncada harfler katakanadır (bulmaca geleneği:
+/// Harf alfabesiyle yazılan diller: harf taşlı, klavyeli ve ızgaralı bütün
+/// türler harf harf oynanır. Japoncada harfler katakanadır (bulmaca geleneği:
 /// küçük kana büyük yazılır).
-const kWordLangs = [
+const kLetterLangs = [
   'tr', 'en', 'de', 'es', 'fr', 'it', 'pt', 'nl', 'sv', 'da', 'nb', 'pl', 'cs', 'ro', 'hu', 'ru', 'uk', 'el',
   'fi', 'id', 'ms', 'fil', 'ar', 'fa', 'he', 'ur', 'ja',
 ];
 
-/// Yalnızca bütün-kelime türlerinde (atasözü, eş/zıt anlam, gruplama) içerik
-/// dili olan diller. Bu yazılarda tek harf taşı anlamlı değildir: Çince ve
-/// Korece yüzlerce hece/karakterle yazılır, Hintçe, Bengalce ve Tayca harfleri
-/// birleşik hece kümeleri oluşturur, Vietnamca kelimeleri tek hecelidir.
-const kQuizOnlyLangs = ['vi', 'ko', 'zh', 'hi', 'bn', 'th'];
+/// Taş (hece/küme) yazılı diller: tek harf taşı anlamlı değildir, kelimeler
+/// taş dizisi olarak oynanır. Çince: her karakter bir taş; Korece: her hece bir
+/// taş (klavyeli türlerde jamo); Vietnamca: her hece (ses tonuyla) bir taş;
+/// Hintçe ve Bengalce: akşara (bitişik ünsüzlerle); Tayca: hece. Bu dillerde
+/// klavye yerine bölümün taşlarından (ve şaşırtmacalardan) oluşan taş havuzu
+/// kullanılır.
+const kTileLangs = ['vi', 'ko', 'zh', 'hi', 'bn', 'th'];
+
+/// Kelime listesi olan diller: 33 dilin hepsi.
+const kWordLangs = [...kLetterLangs, ...kTileLangs];
+
+/// Eski ad (geriye uyum): artık bütün dillerin kelime listesi var.
+const kQuizOnlyLangs = <String>[];
 
 /// İçerik dili olan bütün diller (33).
-const kAllWordLangs = [...kWordLangs, ...kQuizOnlyLangs];
+const kAllWordLangs = kWordLangs;
 
 /// Dilin yerel adı (kelime dili seçicisi için).
 const kWordLangNames = {
@@ -61,7 +76,11 @@ const Map<String, String> _raw = {
   'cs': wordsCs, 'ro': wordsRo, 'hu': wordsHu, 'ru': wordsRu, 'uk': wordsUk, 'el': wordsEl,
   'fi': wordsFi, 'id': wordsId, 'ms': wordsMs, 'fil': wordsFil, 'ar': wordsAr, 'fa': wordsFa,
   'he': wordsHe, 'ur': wordsUr, 'ja': wordsJa,
+  'vi': wordsVi, 'ko': wordsKo, 'zh': wordsZh, 'hi': wordsHi, 'bn': wordsBn, 'th': wordsTh,
 };
+
+/// Taş dillerinde içerikte geçip kelime listesinde olmayan taşlar.
+const Map<String, String> _extraTiles = {'vi': tilesVi, 'hi': tilesHi, 'bn': tilesBn, 'th': tilesTh};
 
 /// Eski ya da bölgesel dil kodları.
 const Map<String, String> _langAlias = {'no': 'nb', 'tl': 'fil', 'iw': 'he', 'in': 'id', 'zsm': 'ms'};
@@ -154,6 +173,16 @@ String upWord(String w, String lang) {
 }
 
 /// Dilin kelime listesi: sıklık sırasında, küçük harf ve sadeleştirilmiş.
+///
+/// Taş yazılı dillerde ([kTileLangs]) her taş tek bir UTF-16 birimiyle
+/// saklanır: Çince karakter ve Hangıl hecesi kendisiyle, Vietnamca hece,
+/// akşara ve Tay hecesi Özel Kullanım Alanı'ndaki (U+E000…) bir kodla. Böylece
+/// türlerin harf işlemleri (`split('')`, `length`, `w[i]`) taşlar üzerinde
+/// aynen çalışır; ekrana [up] ve [upCh] taşın yazısını verir.
+///
+/// Korecede klavyeli türler (`WordKind.keyed`) için ayrıca jamo sözlüğü vardır
+/// ([Lexicon.of] `keyed: true`): kelimeler 두벌식 klavye jamolarıdır, ekranda
+/// hecelere birleştirilir.
 class Lexicon {
   final String lang;
 
@@ -162,22 +191,44 @@ class Lexicon {
   final Set<String> all;
   final Map<int, List<String>> _byLen;
 
-  /// Dilin harfleri (sıklık sırasıyla).
+  /// Dilin harfleri ya da taşları (sıklık sırasıyla).
   final List<String> letters;
 
   /// Harf sıklıkları (aynı sırayla).
   final List<int> letterWeights;
 
-  Lexicon._(this.lang, this.words, this.all, this._byLen, this.letters, this.letterWeights);
+  /// Taş kodu → taşın yazısı (yalnızca kodlanmış taş dillerinde).
+  final Map<String, String> _tileText;
+
+  /// Taşın yazısı → taş kodu.
+  final Map<String, String> _tileCode;
+
+  /// Doğal yazım → kelime (taş dillerinde dışarıdan gelen kelimeyi tanımak için).
+  final Map<String, String> _natural;
+
+  /// Bu sözlük taş sözlüğü mü (klavye yerine taş havuzu).
+  final bool tiled;
+
+  /// Korece jamo (klavye) sözlüğü mü.
+  final bool jamo;
+
+  Lexicon._(this.lang, this.words, this.all, this._byLen, this.letters, this.letterWeights,
+      {this.tiled = false, this.jamo = false, Map<String, String>? tileText, Map<String, String>? tileCode, Map<String, String>? natural})
+      : _tileText = tileText ?? const {},
+        _tileCode = tileCode ?? const {},
+        _natural = natural ?? const {};
 
   static final Map<String, Lexicon> _cache = {};
 
-  static Lexicon of(String lang) {
-    final l = _raw.containsKey(lang) || kQuizOnlyLangs.contains(lang) ? lang : 'en';
-    return _cache[l] ??= _load(l);
+  /// Dilin sözlüğü. [keyed]: klavyeli türler için (Korecede jamo sözlüğü; öbür
+  /// dillerde aynı sözlük).
+  static Lexicon of(String lang, {bool keyed = false}) {
+    final l = _raw.containsKey(lang) ? lang : 'en';
+    if (keyed && l == 'ko') return _cache['ko#jamo'] ??= _loadJamo(of('ko'));
+    return _cache[l] ??= kTileLangs.contains(l) ? _loadTiles(l) : _load(l);
   }
 
-  /// Dilin kelime listesi var mı (yoksa yalnızca bütün-kelime türleri oynanır).
+  /// Dilin kelime listesi var mı.
   static bool hasList(String lang) => _raw.containsKey(lang);
 
   static Lexicon _load(String lang) {
@@ -189,6 +240,11 @@ class Lexicon {
       if (w.length < 3 || !seen.add(w)) continue;
       list.add(w);
     }
+    return _finish(lang, list, seen);
+  }
+
+  static Lexicon _finish(String lang, List<String> list, Set<String> seen,
+      {bool tiled = false, bool jamo = false, Map<String, String>? tileText, Map<String, String>? tileCode, Map<String, String>? natural}) {
     final byLen = <int, List<String>>{};
     final counts = <String, int>{};
     for (final w in list) {
@@ -198,13 +254,80 @@ class Lexicon {
       }
     }
     final letters = counts.keys.toList()..sort((a, b) => counts[b]!.compareTo(counts[a]!));
-    return Lexicon._(lang, list, seen, byLen, letters, [for (final l in letters) counts[l]!]);
+    return Lexicon._(lang, list, seen, byLen, letters, [for (final l in letters) counts[l]!],
+        tiled: tiled, jamo: jamo, tileText: tileText, tileCode: tileCode, natural: natural);
+  }
+
+  /// Taş dilleri: zh ve ko'da her karakter kendisi, vi/hi/bn/th'de taşlar '+' ile ayrılmış.
+  static Lexicon _loadTiles(String lang) {
+    final coded = lang != 'zh' && lang != 'ko';
+    final text = <String, String>{}, code = <String, String>{}, natural = <String, String>{};
+    final seen = <String>{};
+    final list = <String>[];
+    var next = 0xE000;
+    for (final w0 in (_raw[lang] ?? '').split(' ')) {
+      if (w0.isEmpty) continue;
+      String w;
+      if (coded) {
+        final b = StringBuffer();
+        for (final t in w0.split('+')) {
+          var c = code[t];
+          if (c == null) {
+            if (next > 0xF8FF) break;
+            c = String.fromCharCode(next++);
+            code[t] = c;
+            text[c] = t;
+          }
+          b.write(c);
+        }
+        w = b.toString();
+      } else {
+        w = w0;
+      }
+      if (w.length < 2 || !seen.add(w)) continue;
+      list.add(w);
+      natural[_naturalKey(lang, coded ? w0.split('+') : w0.split(''))] = w;
+    }
+    // İçerikte geçen ek taşlar: kodları kelimelerden sonra, sabit sırayla.
+    for (final t in (_extraTiles[lang] ?? '').split(' ')) {
+      if (t.isEmpty || code.containsKey(t) || next > 0xF8FF) continue;
+      final c = String.fromCharCode(next++);
+      code[t] = c;
+      text[c] = t;
+    }
+    return _finish(lang, list, seen, tiled: true, tileText: text, tileCode: code, natural: natural);
+  }
+
+  static String _naturalKey(String lang, List<String> tiles) => lang == 'vi' ? tiles.join(' ') : tiles.join();
+
+  static Lexicon _loadJamo(Lexicon syl) {
+    final seen = <String>{};
+    final list = <String>[];
+    for (final w in syl.words) {
+      final j = hangulToJamo(w);
+      if (j.length < 3 || !seen.add(j)) continue;
+      list.add(j);
+    }
+    return _finish('ko', list, seen, jamo: true);
   }
 
   bool has(String w) => all.contains(w);
 
-  /// [len] harfli kelimeler (sıklık sırasıyla).
+  /// [len] harfli (taş dillerinde taşlı) kelimeler (sıklık sırasıyla).
   List<String> ofLength(int len) => _byLen[len] ?? const <String>[];
+
+  /// En kısa ve en uzun kelime boyu.
+  int get minLen => tiled ? 2 : 3;
+  int get maxLen => _byLen.keys.fold<int>(0, (a, b) => a > b ? a : b);
+
+  /// Harf sayısı olarak düşünülmüş boyu bu sözlüğün taş boyuna çevir. Harf
+  /// dillerinde aynen döner. Taş dillerinde: Hintçe/Bengalce akşaralar kısa
+  /// olduğu için 2–5, öbürlerinde 2–4 taş.
+  int fit(int n) {
+    if (!tiled) return n;
+    if (lang == 'hi' || lang == 'bn') return n <= 4 ? 2 : (n <= 6 ? 3 : (n <= 8 ? 4 : 5));
+    return n <= 5 ? 2 : (n <= 7 ? 3 : 4);
+  }
 
   /// Zorluğa göre ortak kelime havuzu: kolayda en sık kelimeler.
   /// [d] 1..10; havuz büyüklüğü sıklık sırasından alınır.
@@ -221,17 +344,207 @@ class Lexicon {
   /// Uzunluk aralığından havuz.
   List<String> poolRange(int minLen, int maxLen, int d) => [for (var l = minLen; l <= maxLen; l++) ...pool(l, d)];
 
+  /// Harf boyu aralığını bu sözlüğün boyuna çevirip havuz ver.
+  List<String> poolFit(int minLen, int maxLen, int d) {
+    if (!tiled) return poolRange(minLen, maxLen, d);
+    return poolRange(fit(minLen), fit(maxLen), d);
+  }
+
   /// Ağırlıklı rastgele harf.
   String randomLetter(SeededRandom r) => letters[r.weighted(letterWeights)];
 
-  String up(String w) => upWord(w, lang);
-  String upCh(String ch) => upLetter(ch, lang);
+  /// Kelimenin ekrandaki yazısı (büyük harfle; taşlar yazılarıyla; Korece jamo hecelere birleşir).
+  String up(String w) {
+    if (jamo) return jamoToHangul(w);
+    if (!tiled) return upWord(w, lang);
+    if (_tileText.isEmpty) return w;
+    // Kodlu taşlar yazılarına çevrilir; kodsuz karakterler (doğal yazımla
+    // gelen atasözü sözcükleri, boşluklar) olduğu gibi kalır.
+    final b = StringBuffer();
+    var prevTile = false;
+    for (final ch in w.split('')) {
+      final t = _tileText[ch];
+      if (t != null) {
+        if (prevTile && lang == 'vi') b.write(' ');
+        b.write(t);
+        prevTile = true;
+      } else {
+        b.write(ch);
+        prevTile = false;
+      }
+    }
+    return lang == 'vi' ? b.toString().toUpperCase() : b.toString();
+  }
+
+  /// Tek harfin/taşın ekrandaki yazısı.
+  String upCh(String ch) {
+    if (jamo || (tiled && _tileText.isEmpty)) return ch;
+    if (tiled) {
+      final t = _tileText[ch] ?? ch;
+      return lang == 'vi' ? t.toUpperCase() : t;
+    }
+    return upLetter(ch, lang);
+  }
+
+  /// Taşın küçük harfli yazısı (Vietnamcada ses tonu karşılaştırması için).
+  String tileText(String ch) => _tileText[ch] ?? ch;
+
+  /// Doğal yazımla verilmiş bir kelimeyi bu sözlüğün biçimine çevir (ipucu
+  /// yanıtları, atasözü sözcükleri). Taşlara bölünemezse null.
+  String? encode(String natural) {
+    if (jamo) return hangulToJamo(natural);
+    if (!tiled) return natural;
+    final s = natural.trim().toLowerCase();
+    final known = _natural[s];
+    if (known != null) return known;
+    if (lang == 'zh' || lang == 'ko') {
+      return s.isEmpty || s.contains(' ') ? null : s;
+    }
+    List<String>? parts;
+    if (lang == 'vi') {
+      parts = s.split(' ').where((x) => x.isNotEmpty).toList();
+    } else if (lang == 'hi' || lang == 'bn') {
+      parts = aksaras(s, lang);
+    } else {
+      parts = _segmentKnown(s);
+    }
+    if (parts == null || parts.isEmpty) return null;
+    final b = StringBuffer();
+    for (final p in parts) {
+      final c = _tileCode[p];
+      if (c == null) return null;
+      b.write(c);
+    }
+    return b.toString();
+  }
+
+  /// Bilinen taşlarla en uzun eşleşme (geri dönüşlü) — Tayca.
+  List<String>? _segmentKnown(String s) {
+    final memo = <int, List<String>?>{};
+    List<String>? go(int i) {
+      if (i == s.length) return const [];
+      if (memo.containsKey(i)) return memo[i];
+      for (var k = s.length < i + 8 ? s.length : i + 8; k > i; k--) {
+        final t = s.substring(i, k);
+        if (!_tileCode.containsKey(t)) continue;
+        final rest = go(k);
+        if (rest != null) return memo[i] = [t, ...rest];
+      }
+      return memo[i] = null;
+    }
+
+    return go(0);
+  }
+
+  /// Taşın benzerlik anahtarı: Vietnamcada tonsuz hece, Korecede ilk ünsüz,
+  /// Hint yazılarında ünsüz iskeleti, Taycada ton/sesli işaretsiz iskelet,
+  /// Çincede (okunuş bilinmediğinde) aynı bileşen yerine sıklık komşusu.
+  String tileKey(String ch) {
+    final t = _tileText[ch] ?? ch;
+    switch (lang) {
+      case 'vi':
+        return viToneless(t);
+      case 'ko':
+        return hangulInitial(t);
+      case 'hi':
+      case 'bn':
+        return indicSkeleton(t, lang);
+      case 'th':
+        return thaiSkeleton(t);
+      case 'zh':
+        return zhReading(ch);
+      default:
+        return t;
+    }
+  }
+
+  Map<String, List<String>>? _kin;
+
+  /// Benzer taşlar (aynı [tileKey]), sıklık sırasıyla.
+  List<String> kin(String ch) {
+    final m = _kin ??= () {
+      final out = <String, List<String>>{};
+      for (final l in letters) {
+        out.putIfAbsent(tileKey(l), () => <String>[]).add(l);
+      }
+      return out;
+    }();
+    return [for (final x in m[tileKey(ch)] ?? const <String>[]) if (x != ch) x];
+  }
+
+  /// Taş havuzu (klavye yerine): gereken taşlar + benzer ve sık taşlardan
+  /// şaşırtmacalar, tohuma göre karışık. Harf dillerinde boş döner (klavye kullanılır).
+  List<String> keyPool(Iterable<String> need, int seed, {int size = 16}) {
+    if (!tiled) return const [];
+    final out = <String>[];
+    for (final ch in need) {
+      if (!out.contains(ch)) out.add(ch);
+    }
+    final r = SeededRandom(seed);
+    final want = out.length + (size - out.length).clamp(3, 12);
+    final base = List.of(out);
+    // Önce benzer taşlar (Vietnamcada aynı hecenin öbür tonları).
+    for (final ch in base) {
+      if (out.length >= want) break;
+      final k = kin(ch);
+      if (k.isEmpty) continue;
+      final pick = k[r.nextInt(k.length < 6 ? k.length : 6)];
+      if (!out.contains(pick)) out.add(pick);
+    }
+    var guard = 0;
+    final top = letters.length < 300 ? letters.length : 300;
+    while (out.length < want && guard++ < 400) {
+      final ch = letters[r.nextInt(top)];
+      if (!out.contains(ch)) out.add(ch);
+    }
+    r.shuffle(out);
+    return out;
+  }
+
+  /// Çince karakterin okunuşu (pinyin, tonlu); bilinmiyorsa boş.
+  String zhReading(String ch) => lang == 'zh' ? (_zhPinyin()[ch] ?? '') : '';
+
+  /// Kelimenin okunuşu (yalnızca Çince; pinyin, tonlu). Yoksa null.
+  String? reading(String w) {
+    if (lang != 'zh') return null;
+    final m = _zhWordPinyin ??= () {
+      final py = wordsZhPinyin.split(' ');
+      final ws = wordsZh.split(' ');
+      return {for (var i = 0; i < ws.length && i < py.length; i++) ws[i]: py[i].replaceAll('-', ' ')};
+    }();
+    return m[w] ?? [for (final ch in w.split('')) zhReading(ch)].join(' ');
+  }
+
+  static Map<String, String>? _zhWordPinyin;
+  static Map<String, String>? _zhChar;
+
+  static Map<String, String> _zhPinyin() => _zhChar ??= () {
+        final py = wordsZhPinyin.split(' ');
+        final ws = wordsZh.split(' ');
+        final out = <String, String>{};
+        for (var i = 0; i < ws.length && i < py.length; i++) {
+          final s = py[i].split('-');
+          if (s.length != ws[i].length) continue;
+          for (var k = 0; k < s.length; k++) {
+            out.putIfAbsent(ws[i][k], () => s[k]);
+          }
+        }
+        return out;
+      }();
 
   /// Kelime oyun tahtası puanı: seyrek harf daha değerli (1..10).
   int letterValue(String ch) {
     final i = letters.indexOf(ch);
     if (i < 0) return 5;
     final n = letters.length;
+    if (tiled) {
+      // Taş dillerinde yüzlerce taş var: sık taşlar 1-2, seyrekleri 3-8.
+      if (i < 40) return 1;
+      if (i < 120) return 2;
+      if (i < 300) return 3;
+      if (i < 600) return 5;
+      return 8;
+    }
     if (i < n * 0.30) return 1;
     if (i < n * 0.45) return 2;
     if (i < n * 0.60) return 3;
@@ -241,8 +554,12 @@ class Lexicon {
     return 10;
   }
 
-  /// Klavye düzeni: alfabe sırasında satırlar.
+  /// Klavye düzeni: alfabe sırasında satırlar (Korece jamoda 두벌식 düzeni).
   List<List<String>> keyboardRows() {
+    if (jamo) {
+      final present = letters.toSet();
+      return [for (final row in kKoKeyRows) [for (final k in row) if (present.contains(k)) k]];
+    }
     final alpha = alphabet();
     final per = alpha.length <= 26 ? 10 : (alpha.length <= 30 ? 11 : (alpha.length <= 48 ? 12 : 13));
     final rows = <List<String>>[];
@@ -252,8 +569,9 @@ class Lexicon {
     return rows;
   }
 
-  /// Alfabe sırasında harfler.
+  /// Alfabe sırasında harfler (taş dillerinde sıklık sırası).
   List<String> alphabet() {
+    if (tiled) return letters;
     final order = _alphaOrder[lang] ?? 'abcdefghijklmnopqrstuvwxyz';
     final present = letters.toSet();
     final out = <String>[for (final ch in order.split('')) if (present.contains(ch)) ch];

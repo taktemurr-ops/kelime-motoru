@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +8,7 @@ import 'package:studio_core/core/game_rules.dart';
 import 'package:studio_core/core/level_plan.dart';
 import 'package:studio_core/core/missions.dart';
 import 'package:studio_core/core/rng.dart';
+import 'package:studio_core/core/strings.dart';
 import 'package:studio_core/core/stats.dart';
 
 import 'words.dart';
@@ -42,6 +45,9 @@ abstract class WordKind {
 
   /// Oyun ekranı.
   Widget build(WordPlay play);
+
+  /// İki kişilik (rakipli) tür mü: çevrimiçi masa ve bilgisayara karşı oyun.
+  int get players => 1;
 
   List<GameStat> get stats => const [
         GameStat('rounds_won', 'Kazanılan bölüm', 'Levels won', scale: 10),
@@ -91,6 +97,10 @@ class WordRules extends GameRules<WLevel> {
   @override
   int get levelCount => levels;
 
+  /// Rakipli türlerde 2: merkez "Bilgisayara karşı" ve "Çevrimiçi masa" sunar.
+  @override
+  int get localPlayers => kindFor(5).players;
+
   @override
   List<String> get optionalMechanics => const [];
 
@@ -131,6 +141,81 @@ String _deviceWordLang() {
 WordRules wordRules(String gameId, WordKind kind, {int Function(int d)? diffMap}) =>
     WordRules(gameId: gameId, kindFor: (_) => kind, diffMap: diffMap);
 
+/// Çevrimiçi kelime maçı (iki koltuk): rakip hamlelerinin günlüğü.
+///
+/// Hamleler türün kendi kodladığı kısa metinlerdir. "L:<dil>" hamlesi kelime
+/// dilini taşır: 0. koltuk belirler, diğer koltuk aynı dilde oynar. Rakip
+/// bağlantıyı koparırsa ([oppGone]) türler bilgisayar rakibine geçer.
+class WordNet {
+  final MatchLink link;
+  final int me;
+  final int opp;
+  final List<String> mine = [];
+  final List<String> theirs = [];
+  String? lang;
+  final List<VoidCallback> _listeners = [];
+  StreamSubscription<(int, String)>? _sub;
+
+  WordNet(this.link) : me = link.mySeat, opp = link.mySeat == 0 ? 1 : 0;
+
+  /// Maçta gerçek bir rakip varsa ağ bağlantısı; bot rakipte null (çevrimdışı gibi oynanır).
+  static WordNet? of(PlayContext ctx) {
+    final m = ctx.match;
+    if (m == null) return null;
+    final opp = m.mySeat == 0 ? 1 : 0;
+    if (ctx.role(opp) != SeatRole.remote) return null;
+    return WordNet(m).._start();
+  }
+
+  void _take(int seat, String mv) {
+    if (mv.startsWith('L:')) {
+      if (seat == 0) lang = mv.substring(2);
+      return;
+    }
+    if (seat == me) {
+      mine.add(mv);
+    } else if (seat == opp) {
+      theirs.add(mv);
+    }
+  }
+
+  void _start() {
+    for (final (s, mv) in link.history) {
+      _take(s, mv);
+    }
+    _sub = link.moves.listen((e) {
+      if (e.$1 == me) return;
+      _take(e.$1, e.$2);
+      for (final l in List.of(_listeners)) {
+        l();
+      }
+    });
+  }
+
+  /// Rakip bağlantıyı kopardı mı (artık bilgisayar oynar).
+  bool get oppGone => link.dropped.contains(opp);
+
+  /// Hamle gönder (kendi günlüğüne de yazılır).
+  void send(String mv) {
+    if (!mv.startsWith('L:')) mine.add(mv);
+    unawaited(link.send(mv).catchError((Object _) {}));
+  }
+
+  /// Bu türde daha önce gönderilmiş dil hamlesi var mı.
+  bool get langSent => link.history.any((e) => e.$1 == me && e.$2.startsWith('L:'));
+
+  void listen(VoidCallback f) => _listeners.add(f);
+  void unlisten(VoidCallback f) => _listeners.remove(f);
+
+  /// Maç sonucu: kazanan koltuk (-1 berabere).
+  void finish(int winner) => unawaited(link.finish(winner, iWon: winner == me).catchError((Object _) {}));
+
+  void dispose() {
+    _sub?.cancel();
+    _listeners.clear();
+  }
+}
+
 /// Oyun ekranına verilen her şey.
 class WordPlay {
   final PlayContext ctx;
@@ -149,6 +234,9 @@ class WordPlay {
   /// Seçilebilecek içerik dilleri.
   final List<String> langs;
 
+  /// Çevrimiçi maçta rakip bağlantısı; çevrimdışında ya da bot rakipte null.
+  final WordNet? net;
+
   const WordPlay({
     required this.ctx,
     required this.rules,
@@ -159,6 +247,7 @@ class WordPlay {
     required this.resume,
     required this.switchLang,
     required this.langs,
+    this.net,
   });
 
   String get lang => ctx.lang;
@@ -204,6 +293,10 @@ class _WordStageState extends State<WordStage> {
   WPuzzle? puzzle;
   Map<String, Object?> resume = const {};
   int _gen = 0;
+  WordNet? net;
+
+  /// Çevrimiçi maçta 0. koltuğun kelime dili bekleniyor.
+  bool _waitLang = false;
 
   @override
   void initState() {
@@ -211,6 +304,23 @@ class _WordStageState extends State<WordStage> {
     registerWordLicenses();
     lv = widget.ctx.generated.puzzle as WLevel;
     kind = widget.rules.kindForLevel(widget.ctx.spec.difficulty);
+    net = kind.players >= 2 ? WordNet.of(widget.ctx) : null;
+    final n = net;
+    if (n != null) {
+      // Çevrimiçi: kelime dilini 0. koltuk belirler, iki taraf aynı harflerle oynar.
+      if (n.me == 0) {
+        _apply(wordLangFor(widget.ctx.lang, kind.contentLangs), keepResume: false);
+        if (!n.langSent) n.send('L:$wl');
+      } else if (n.lang != null) {
+        _apply(n.lang!, keepResume: false);
+      } else {
+        wl = lv.lang;
+        puzzle = lv.puzzle;
+        _waitLang = true;
+        n.listen(_onNet);
+      }
+      return;
+    }
     final saved = widget.ctx.resume['wl'];
     wl = saved is String ? saved : lv.lang;
     resume = saved is String ? widget.ctx.resume : const {};
@@ -220,6 +330,23 @@ class _WordStageState extends State<WordStage> {
       _loadPref();
     }
     _apply(wl, keepResume: true);
+  }
+
+  void _onNet() {
+    final n = net;
+    if (n == null || !_waitLang || !mounted) return;
+    if (n.lang != null || n.oppGone) {
+      setState(() {
+        _waitLang = false;
+        _apply(n.lang ?? lv.lang, keepResume: false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    net?.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPref() async {
@@ -242,7 +369,7 @@ class _WordStageState extends State<WordStage> {
   }
 
   Future<void> _switch(String l) async {
-    if (l == wl) return;
+    if (l == wl || net != null) return;
     setState(() => _apply(l, keepResume: false));
     widget.ctx.saveResume({'wl': wl});
     try {
@@ -253,6 +380,15 @@ class _WordStageState extends State<WordStage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_waitLang) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 12),
+          Text(Strings.pick(_kWait, widget.ctx.lang), style: const TextStyle(fontWeight: FontWeight.w700)),
+        ]),
+      );
+    }
     final play = WordPlay(
       ctx: widget.ctx,
       rules: widget.rules,
@@ -262,11 +398,14 @@ class _WordStageState extends State<WordStage> {
       seed: lv.seed,
       resume: resume,
       switchLang: _switch,
-      langs: kind.contentLangs ?? kWordLangs,
+      langs: net != null ? [wl] : (kind.contentLangs ?? kWordLangs),
+      net: net,
     );
     return KeyedSubtree(key: ValueKey('$wl-$_gen'), child: kind.build(play));
   }
 }
+
+const _kWait = ['Rakip bekleniyor…', 'Waiting for rival…', 'Warte auf Gegner…', 'Esperando al rival…', 'En attente de l’adversaire…', 'بانتظار الخصم…', 'در انتظار حریف…', 'ממתינים ליריב…', 'حریف کا انتظار…', 'Ждём соперника…', 'Чекаємо суперника…', 'Czekam na rywala…', 'Čekáme na soupeře…', 'Se așteaptă adversarul…', 'Várakozás az ellenfélre…', 'Αναμονή αντιπάλου…', 'In attesa dell’avversario…', 'Aguardando o rival…', 'Wachten op tegenstander…', 'Väntar på motståndaren…', 'Venter på modstanderen…', 'Venter på motstanderen…', 'Odotetaan vastustajaa…', '相手を待っています…', '상대를 기다리는 중…', '等待对手…', 'प्रतिद्वंद्वी की प्रतीक्षा…', 'প্রতিদ্বন্দ্বীর অপেক্ষায়…', 'Menunggu lawan…', 'Menunggu lawan…', 'รอคู่แข่ง…', 'Đang chờ đối thủ…', 'Hinihintay ang kalaban…'];
 
 bool _licensed = false;
 

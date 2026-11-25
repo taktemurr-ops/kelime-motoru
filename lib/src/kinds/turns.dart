@@ -433,6 +433,9 @@ class ChainKind extends WordKind {
   const ChainKind();
 
   @override
+  int get players => 2;
+
+  @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
     final w = r.pick(lx.pool(5, d));
     return ChainPuzzle(w, 5 + d ~/ 2, 30 - d * 2);
@@ -466,7 +469,14 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
   WordPlay get play => widget.play;
   Lexicon get lx => play.lx;
   int get myCount => mine.where((x) => x).length;
+  int get rivalCount => mine.skip(1).where((x) => !x).length;
   String get need => chainLetter(lx, chain.last);
+  WordNet? get net => play.net;
+  bool get online => net != null && !net!.oppGone;
+  int _oi = 0;
+
+  /// Çevrimiçinde rakibin süresi dolduktan sonra tanınan pay (ağ gecikmesi).
+  static const _grace = 15;
 
   @override
   void initState() {
@@ -475,17 +485,105 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
     chain.add(p.start);
     mine.add(false);
     botRng = SeededRandom(play.seed ^ 0x5151);
+    final n = net;
+    if (n != null) {
+      n.listen(_onNet);
+      _replay();
+    }
     startTicker();
   }
 
   @override
-  void onTick() {
-    if (ended || botThinking) return;
-    if (seconds - turnStart >= p.turnTime) {
-      ended = true;
-      play.ctx.sfx(Sfx.lose);
-      play.lose(seconds: seconds, hints: hints, stats: {'words_found': myCount}, headline: '${kt(play.lang, 'found')}: $myCount/${p.need}');
+  void dispose() {
+    net?.unlisten(_onNet);
+    super.dispose();
+  }
+
+  /// Bir hamle geçerli mi ("W:kelime").
+  String? _valid(String mv) {
+    if (!mv.startsWith('W:')) return null;
+    final w = mv.substring(2);
+    if (w.length < 3 || !w.startsWith(need) || chain.contains(w) || !lx.has(w)) return null;
+    return w;
+  }
+
+  void _replay() {
+    final n = net!;
+    var seat = 0, im = 0;
+    while (!ended) {
+      final list = seat == n.me ? n.mine : n.theirs;
+      final i = seat == n.me ? im : _oi;
+      if (i >= list.length) break;
+      if (seat == n.me) {
+        im++;
+      } else {
+        _oi++;
+      }
+      final mv = list[i];
+      final w = _valid(mv);
+      if (w == null) {
+        // Süre doldu ("T"): sırası gelen kaybeder.
+        WidgetsBinding.instance.addPostFrameCallback((_) => _end(seat != n.me));
+        ended = true;
+        return;
+      }
+      chain.add(w);
+      mine.add(seat == n.me);
+      if ((seat == n.me ? myCount : rivalCount) >= p.need) {
+        final won = seat == n.me;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _end(won));
+        ended = true;
+        return;
+      }
+      seat = 1 - seat;
     }
+    botThinking = seat != n.me;
+  }
+
+  void _onNet() {
+    final n = net;
+    if (n == null || !mounted || ended || !botThinking || _oi >= n.theirs.length) return;
+    final w = _valid(n.theirs[_oi++]);
+    if (w == null) return _end(true);
+    setState(() {
+      chain.add(w);
+      mine.add(false);
+      botThinking = false;
+      turnStart = seconds;
+    });
+    play.ctx.sfx(Sfx.tap);
+    if (rivalCount >= p.need) _end(false);
+  }
+
+  @override
+  void onTick() {
+    if (ended) return;
+    if (botThinking) {
+      final n = net;
+      if (n == null) return;
+      if (n.oppGone) {
+        // Rakip koptu: sıra bilgisayarda.
+        _botTurn();
+      } else if (seconds - turnStart >= p.turnTime + _grace) {
+        _end(true);
+      }
+      return;
+    }
+    if (seconds - turnStart >= p.turnTime) {
+      net?.send('T');
+      _end(false);
+    }
+  }
+
+  /// Oyun bitti: çevrimiçinde iki koltuğa sonuç, çevrimdışında eski kural.
+  void _end(bool won) {
+    if (ended && net == null) return;
+    ended = true;
+    final n = net;
+    if (n != null) n.finish(won ? n.me : n.opp);
+    if (won) return _win();
+    play.ctx.sfx(Sfx.lose);
+    play.lose(seconds: seconds, hints: hints, stats: {'words_found': myCount}, headline: '${kt(play.lang, 'found')}: $myCount/${p.need}');
   }
 
   String? _botWord() {
@@ -493,6 +591,27 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
     final opts = [for (final w in lx.words.take(5000)) if (w.startsWith(ch) && !chain.contains(w)) w];
     if (opts.isEmpty) return null;
     return opts[botRng.nextInt(math.min(opts.length, 60))];
+  }
+
+  bool _botBusy = false;
+
+  void _botTurn() {
+    if (_botBusy) return;
+    _botBusy = true;
+    Future.delayed(Duration(milliseconds: 700 + botRng.nextInt(900)), () {
+      _botBusy = false;
+      if (!mounted || ended) return;
+      final b = _botWord();
+      if (b == null) return _end(true);
+      setState(() {
+        chain.add(b);
+        mine.add(false);
+        botThinking = false;
+        turnStart = seconds;
+      });
+      play.ctx.sfx(Sfx.tap);
+      if (net != null && rivalCount >= p.need) _end(false);
+    });
   }
 
   void _enter() {
@@ -509,25 +628,17 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
       play.ctx.sfx(Sfx.error);
       return flash(kt(play.lang, 'notWord'));
     }
+    net?.send('W:$w');
     setState(() {
       chain.add(w);
       mine.add(true);
+      botThinking = true;
+      turnStart = seconds;
     });
     play.ctx.sfx(Sfx.place);
-    if (myCount >= p.need) return _win();
-    botThinking = true;
-    Future.delayed(Duration(milliseconds: 700 + botRng.nextInt(900)), () {
-      if (!mounted || ended) return;
-      final b = _botWord();
-      if (b == null) return _win();
-      setState(() {
-        chain.add(b);
-        mine.add(false);
-        botThinking = false;
-        turnStart = seconds;
-      });
-      play.ctx.sfx(Sfx.tap);
-    });
+    if (myCount >= p.need) return _end(true);
+    if (online) return _onNet();
+    _botTurn();
   }
 
   void _win() {
@@ -560,7 +671,14 @@ class _ChainViewState extends State<_ChainView> with SecondsTicker, Flash {
   Widget build(BuildContext context) {
     final left = math.max(0, p.turnTime - (seconds - turnStart));
     return Column(children: [
-      WordBar(play: play, left: botThinking ? '…' : clock(left), status: '${kt(play.lang, 'found')}: $myCount/${p.need}', onHint: _hint),
+      WordBar(
+        play: play,
+        left: botThinking ? '…' : clock(left),
+        status: net != null
+            ? '${kt(play.lang, botThinking ? 'rivalTurn' : 'yourTurn')} · ${kt(play.lang, 'you')} $myCount/${p.need} · ${kt(play.lang, 'rival')} $rivalCount'
+            : '${kt(play.lang, 'found')}: $myCount/${p.need}',
+        onHint: _hint,
+      ),
       flashLine(),
       Expanded(
         child: ListView(reverse: true, padding: const EdgeInsets.all(8), children: [

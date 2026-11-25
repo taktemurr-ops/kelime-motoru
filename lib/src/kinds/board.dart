@@ -51,6 +51,9 @@ class BoardKind extends WordKind {
   const BoardKind();
 
   @override
+  int get players => 2;
+
+  @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
     // Sıklığa göre 84 taş (her harften en az bir).
     final total = lx.letterWeights.fold<int>(0, (a, b) => a + b);
@@ -275,6 +278,12 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
 
   WordPlay get play => widget.play;
   Lexicon get lx => play.lx;
+  WordNet? get net => play.net;
+
+  /// Çevrimiçi rakip hâlâ masada mı (koparsa bilgisayar oynar).
+  bool get online => net != null && !net!.oppGone;
+  int _oi = 0;
+  bool _botBusy = false;
 
   @override
   void initState() {
@@ -284,15 +293,127 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
     board = List<String>.filled(kBoardN * kBoardN, '');
     bag = List.of(p.bag);
     botRng = SeededRandom(play.seed ^ 0xB0A7);
-    _draw(rack);
-    _draw(botRack);
+    final n = net;
+    // Taşlar koltuk sırasıyla çekilir (0. koltuk önce): iki cihazda aynı torba.
+    if (n != null && n.me == 1) {
+      _draw(botRack);
+      _draw(rack);
+    } else {
+      _draw(rack);
+      _draw(botRack);
+    }
+    if (n != null) {
+      n.listen(_onNet);
+      _replay();
+    }
     startTicker();
+  }
+
+  @override
+  void dispose() {
+    net?.unlisten(_onNet);
+    super.dispose();
   }
 
   void _draw(List<String> r) {
     while (r.length < 7 && bag.isNotEmpty) {
       r.add(bag.removeLast());
     }
+  }
+
+  /// Taş değişimi: raf sıralı olarak torbanın dibine gider (iki cihazda aynı sıra).
+  void _swapRack(List<String> r) {
+    bag.insertAll(0, List.of(r)..sort());
+    r.clear();
+    _draw(r);
+  }
+
+  static String encode(Map<int, String> tiles) => 'P:${[for (final e in tiles.entries) '${e.key}=${e.value}'].join(';')}';
+
+  static Map<int, String>? decode(String mv) {
+    if (!mv.startsWith('P:')) return null;
+    final out = <int, String>{};
+    for (final part in mv.substring(2).split(';')) {
+      final k = part.indexOf('=');
+      if (k <= 0) return null;
+      final cell = int.tryParse(part.substring(0, k));
+      if (cell == null || cell < 0 || cell >= kBoardN * kBoardN) return null;
+      out[cell] = part.substring(k + 1);
+    }
+    return out.isEmpty ? null : out;
+  }
+
+  /// Bir hamleyi uygula ([mine]: bu cihazın oyuncusu). "P:hücre=harf;…", "S" değişim, "X" pas.
+  String _apply(bool mine, String mv) {
+    final r = mine ? rack : botRack;
+    final tiles = decode(mv);
+    if (tiles != null) {
+      final m = rules.evaluate(board, tiles);
+      final pool = List.of(r);
+      final ok = m != null && tiles.values.every(pool.remove);
+      if (ok) {
+        m.tiles.forEach((k, v) {
+          board[k] = v;
+          r.remove(v);
+        });
+        if (mine) {
+          me += m.score;
+          myTurns++;
+        } else {
+          bot += m.score;
+          botTurns++;
+        }
+        passes = 0;
+        _draw(r);
+        return '${m.words.map(lx.up).join(', ')} +${m.score}';
+      }
+      mv = 'X';
+    }
+    if (mv == 'S' && bag.length >= 7) _swapRack(r);
+    passes++;
+    if (mine) {
+      myTurns++;
+    } else {
+      botTurns++;
+    }
+    return kt(play.lang, 'pass');
+  }
+
+  /// Maça geri dönüldüyse hamleleri koltuk sırasıyla yeniden uygula.
+  void _replay() {
+    final n = net!;
+    var seat = 0, im = 0;
+    while (true) {
+      if (seat == n.me) {
+        if (im >= n.mine.length) break;
+        _apply(true, n.mine[im++]);
+      } else {
+        if (_oi >= n.theirs.length) break;
+        lastBot = _apply(false, n.theirs[_oi++]);
+      }
+      seat = 1 - seat;
+      if (_gameOver) break;
+    }
+    botThinking = seat != n.me;
+    if (_gameOver) WidgetsBinding.instance.addPostFrameCallback((_) => _finish());
+  }
+
+  void _onNet() {
+    final n = net;
+    if (n == null || !mounted || ended || !botThinking) return;
+    if (_oi >= n.theirs.length) return;
+    setState(() {
+      lastBot = _apply(false, n.theirs[_oi++]);
+      botThinking = false;
+    });
+    play.ctx.sfx(Sfx.tap);
+    if (_gameOver) _finish();
+  }
+
+  @override
+  void onTick() {
+    // Rakip koptuysa sırası bilgisayara geçer.
+    if (!ended && botThinking && net != null && net!.oppGone && !_botBusy) _afterMine();
   }
 
   Map<int, String> get pendingTiles => {for (final e in pending.entries) e.key: rack[e.value]};
@@ -313,24 +434,19 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
 
   void _submit() {
     if (ended || botThinking || pending.isEmpty) return;
-    final mv = rules.evaluate(board, pendingTiles);
+    final tiles = pendingTiles;
+    final mv = rules.evaluate(board, tiles);
     if (mv == null) {
       play.ctx.sfx(Sfx.error);
       flash(kt(play.lang, 'notWord'));
       return;
     }
-    final used = pending.values.toList()..sort();
+    final code = encode(tiles);
     setState(() {
-      mv.tiles.forEach((k, v) => board[k] = v);
-      for (final i in used.reversed) {
-        rack.removeAt(i);
-      }
       pending.clear();
-      me += mv.score;
-      myTurns++;
-      passes = 0;
-      _draw(rack);
+      _apply(true, code);
     });
+    net?.send(code);
     play.ctx.sfx(Sfx.combo);
     flash('${mv.words.map(lx.up).join(', ')}  +${mv.score}');
     _afterMine();
@@ -338,16 +454,12 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
 
   void _pass({bool swap = false}) {
     if (ended || botThinking) return;
+    final code = swap ? 'S' : 'X';
     setState(() {
       pending.clear();
-      if (swap && bag.length >= 7) {
-        bag.insertAll(0, rack);
-        rack.clear();
-        _draw(rack);
-      }
-      passes++;
-      myTurns++;
+      _apply(true, code);
     });
+    net?.send(code);
     _afterMine();
   }
 
@@ -357,33 +469,25 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
   void _afterMine() {
     if (_gameOver) return _finish();
     setState(() => botThinking = true);
+    if (online) {
+      // Rakibin hamlesi ağdan gelir.
+      _onNet();
+      return;
+    }
+    _botBusy = true;
     Future.delayed(const Duration(milliseconds: 600), () {
-      if (!mounted) return;
+      _botBusy = false;
+      if (!mounted || ended) return;
       final moves = rules.movesFor(board, botRack);
       setState(() {
         botThinking = false;
-        botTurns++;
         if (moves.isEmpty) {
-          passes++;
-          lastBot = kt(play.lang, 'pass');
-          if (bag.length >= 7) {
-            bag.insertAll(0, botRack);
-            botRack.clear();
-            _draw(botRack);
-          }
+          lastBot = _apply(false, 'S');
         } else {
           // Zorluğa göre en iyi hamleden ya da daha zayıf bir hamleden seç.
           final q = (1 - play.d / 10) * 0.6;
           final idx = math.min(moves.length - 1, (moves.length * q * botRng.nextDouble()).floor());
-          final mv = moves[idx];
-          mv.tiles.forEach((k, v) {
-            board[k] = v;
-            botRack.remove(v);
-          });
-          bot += mv.score;
-          passes = 0;
-          lastBot = '${mv.words.map(lx.up).join(', ')} +${mv.score}';
-          _draw(botRack);
+          lastBot = _apply(false, encode(moves[idx].tiles));
         }
       });
       play.ctx.sfx(Sfx.tap);
@@ -395,6 +499,8 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
     if (ended) return;
     ended = true;
     final h = '${kt(play.lang, 'you')} $me — ${kt(play.lang, 'rival')} $bot';
+    final n = net;
+    if (n != null) n.finish(me > bot ? n.me : (me < bot ? n.opp : -1));
     Future.delayed(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       if (me >= bot) {
@@ -447,6 +553,7 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
         onHint: _hint,
       ),
       flashLine(),
+      if (net != null) Text(kt(lang, botThinking ? 'rivalTurn' : 'yourTurn'), style: const TextStyle(fontWeight: FontWeight.w800)),
       if (lastBot.isNotEmpty) Text('${kt(lang, 'rival')}: $lastBot', style: const TextStyle(fontWeight: FontWeight.w600)),
       Expanded(
         child: LayoutBuilder(builder: (context, box) {

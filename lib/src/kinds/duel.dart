@@ -33,6 +33,9 @@ class DuelKind extends WordKind {
   const DuelKind();
 
   @override
+  int get players => 2;
+
+  @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
     final rounds = <DuelRound>[];
     const time = 60;
@@ -81,7 +84,14 @@ class _DuelViewState extends State<_DuelView> with SecondsTicker, Flash {
   int myTotal = 0, botTotal = 0;
   bool between = false;
 
+  /// Çevrimiçi: bu turun sonucu gönderildi, rakibinki bekleniyor.
+  bool waiting = false;
+  int myRound = 0;
+  final Map<int, List<String>> rivalWords = {};
+
   WordPlay get play => widget.play;
+  WordNet? get net => play.net;
+  bool get online => net != null && !net!.oppGone;
   Lexicon get lx => play.lx;
   DuelRound get rd => p.rounds[round];
 
@@ -90,33 +100,106 @@ class _DuelViewState extends State<_DuelView> with SecondsTicker, Flash {
     super.initState();
     p = play.puzzle as DuelPuzzle;
     letters = List.of(rd.letters);
+    net?.listen(_onNet);
+    _replay();
     startTicker();
   }
 
+  @override
+  void dispose() {
+    net?.unlisten(_onNet);
+    super.dispose();
+  }
+
+  /// Maça geri dönüldüyse gönderilmiş turları yeniden kur.
+  void _replay() {
+    final n = net;
+    if (n == null) return;
+    final sent = [for (final m in n.mine) if (m.startsWith('R')) m];
+    for (var r = 0; r < sent.length && r < p.rounds.length; r++) {
+      round = r;
+      letters = List.of(rd.letters);
+      found
+        ..clear()
+        ..addAll(_parse(r, sent[r]) ?? const []);
+      myRound = found.fold<int>(0, (a, w) => a + wordValue(lx, w));
+      between = true;
+      waiting = true;
+      _resolve(quiet: true);
+      if (waiting) break;
+    }
+  }
+
+  /// "R<tur>:kelime,kelime" → o turun geçerli kelimeleri.
+  List<String>? _parse(int r, String m) {
+    final head = 'R$r:';
+    if (!m.startsWith(head)) return null;
+    final body = m.substring(head.length);
+    if (body.isEmpty) return const [];
+    final valid = p.rounds[r].valid;
+    return [for (final w in body.split(',').toSet()) if (valid.contains(w)) w];
+  }
+
+  /// Rakibin bu turdaki kelimeleri: çevrimdışında bilgisayarın, çevrimiçinde rakibin.
+  List<String>? _rival(int r) {
+    if (!online) return p.rounds[r].botWords;
+    for (final m in net!.theirs) {
+      final w = _parse(r, m);
+      if (w != null) return w;
+    }
+    return null;
+  }
+
+  void _onNet() {
+    if (mounted && waiting) setState(() => _resolve());
+  }
+
   int get elapsed => seconds - roundStart;
-  List<String> get botSeen => [for (var i = 0; i < rd.botWords.length; i++) if (rd.botTimes[i] <= elapsed) rd.botWords[i]];
+  List<String> get botSeen => online ? const [] : [for (var i = 0; i < rd.botWords.length; i++) if (rd.botTimes[i] <= elapsed) rd.botWords[i]];
   int get myScore => found.fold<int>(0, (a, w) => a + wordValue(lx, w));
   int get botScore => botSeen.fold<int>(0, (a, w) => a + wordValue(lx, w));
 
   @override
   void onTick() {
-    if (ended || between) return;
+    if (ended) return;
+    if (waiting) {
+      // Rakip koptuysa bilgisayar sonucu ile devam.
+      if (net != null && net!.oppGone) setState(() => _resolve());
+      return;
+    }
+    if (between) return;
     if (elapsed >= p.roundTime) _endRound();
   }
 
   void _endRound() {
-    final mine = myScore, bots = rd.botWords.fold<int>(0, (a, w) => a + wordValue(lx, w));
+    if (between) return;
+    myRound = myScore;
+    net?.send('R$round:${found.join(',')}');
     setState(() {
-      myTotal += mine;
-      botTotal += bots;
       between = true;
+      waiting = true;
+      _resolve();
     });
-    play.ctx.sfx(mine >= bots ? Sfx.combo : Sfx.error);
+  }
+
+  /// İki tarafın tur sonucu hazırsa puanları işle.
+  void _resolve({bool quiet = false}) {
+    if (!waiting) return;
+    final theirs = _rival(round);
+    if (theirs == null) return;
+    waiting = false;
+    rivalWords[round] = theirs;
+    final mine = myRound, bots = theirs.fold<int>(0, (a, w) => a + wordValue(lx, w));
+    myTotal += mine;
+    botTotal += bots;
+    if (!quiet) play.ctx.sfx(mine >= bots ? Sfx.combo : Sfx.error);
     if (round == p.rounds.length - 1) {
       ended = true;
       Future.delayed(const Duration(milliseconds: 1200), () {
         if (!mounted) return;
         final h = '${kt(play.lang, 'you')} $myTotal — ${kt(play.lang, 'rival')} $botTotal';
+        final n = net;
+        if (n != null) n.finish(myTotal > botTotal ? n.me : (myTotal < botTotal ? n.opp : -1));
         if (myTotal >= botTotal) {
           play.ctx.sfx(Sfx.win);
           final margin = myTotal - botTotal;
@@ -130,6 +213,7 @@ class _DuelViewState extends State<_DuelView> with SecondsTicker, Flash {
   }
 
   void _next() {
+    if (waiting) return;
     setState(() {
       round++;
       found.clear();
@@ -185,14 +269,19 @@ class _DuelViewState extends State<_DuelView> with SecondsTicker, Flash {
                 child: Column(children: [
                   Text(kt(lang, 'rival'), style: const TextStyle(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),
-                  FoundWords(words: between ? rd.botWords : botSeen.reversed.toList(), lx: lx),
+                  if (waiting)
+                    Text(kt(lang, 'waitRival'), textAlign: TextAlign.center)
+                  else
+                    FoundWords(words: between ? (rivalWords[round] ?? rd.botWords) : botSeen.reversed.toList(), lx: lx),
                 ]),
               ),
             ),
           ),
         ]),
       ),
-      if (between && !ended)
+      if (between && waiting)
+        Padding(padding: const EdgeInsets.all(16), child: Text(kt(lang, 'waitRival'), style: const TextStyle(fontWeight: FontWeight.w800)))
+      else if (between && !ended)
         BigButton(label: kt(lang, 'next'), icon: Icons.arrow_forward, onPressed: _next)
       else
         LetterPad(
@@ -261,6 +350,9 @@ class LettersNumbersKind extends WordKind {
   @override
   String get id => 'harf-sayi';
   const LettersNumbersKind();
+
+  @override
+  int get players => 2;
 
   LnRound? _letters(Lexicon lx, int d, SeededRandom r) {
     final len = 7 + r.nextInt(3);
@@ -379,7 +471,14 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
 
   static const roundTime = 45;
 
+  /// Çevrimiçi: tur sonucu gönderildi, rakibinki bekleniyor.
+  bool waiting = false;
+  int _myRoundValue = 0;
+  String _myRoundWord = '';
+
   WordPlay get play => widget.play;
+  WordNet? get net => play.net;
+  bool get online => net != null && !net!.oppGone;
   Lexicon get lx => play.lx;
   LnRound get rd => p.rounds[round];
   int get elapsed => seconds - roundStart;
@@ -389,7 +488,55 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
     super.initState();
     p = play.puzzle as LnPuzzle;
     _setupRound();
+    net?.listen(_onNet);
+    _replay();
     startTicker();
+  }
+
+  @override
+  void dispose() {
+    net?.unlisten(_onNet);
+    super.dispose();
+  }
+
+  void _replay() {
+    final n = net;
+    if (n == null) return;
+    final sent = [for (final m in n.mine) if (m.startsWith('R')) m];
+    for (var r = 0; r < sent.length && r < p.rounds.length; r++) {
+      round = r;
+      _setupRound();
+      final v = _parse(r, sent[r]);
+      _myRoundWord = v.$1;
+      _myRoundValue = v.$2;
+      if (!rd.numbers) bestWord = v.$1;
+      between = true;
+      waiting = true;
+      _resolve(quiet: true);
+      if (waiting) break;
+    }
+  }
+
+  /// "R<tur>:<kelime ya da sayı>" → (kelime, sayı).
+  (String, int) _parse(int r, String m) {
+    final body = m.substring('R$r:'.length);
+    final rr = p.rounds[r];
+    if (rr.numbers) return ('', int.tryParse(body) ?? -1);
+    final ok = body.length >= 3 && lx.has(body) && canSpell(body, letterCounts(rr.letters.join()));
+    return (ok ? body : '', 0);
+  }
+
+  (String, int)? _rival(int r) {
+    final rr = p.rounds[r];
+    if (!online) return (rr.botWord, rr.botValue);
+    for (final m in net!.theirs) {
+      if (m.startsWith('R$r:')) return _parse(r, m);
+    }
+    return null;
+  }
+
+  void _onNet() {
+    if (mounted && waiting) setState(() => _resolve());
   }
 
   void _setupRound() {
@@ -403,7 +550,12 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
 
   @override
   void onTick() {
-    if (ended || between) return;
+    if (ended) return;
+    if (waiting) {
+      if (net != null && net!.oppGone) setState(() => _resolve());
+      return;
+    }
+    if (between) return;
     if (elapsed >= roundTime) _endRound();
   }
 
@@ -417,26 +569,41 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
   }
 
   void _endRound() {
+    if (between) return;
+    _myRoundWord = bestWord;
+    _myRoundValue = rd.numbers ? bestNumber : 0;
+    net?.send('R$round:${rd.numbers ? '$_myRoundValue' : bestWord}');
+    setState(() {
+      between = true;
+      waiting = true;
+      _resolve();
+    });
+  }
+
+  void _resolve({bool quiet = false}) {
+    if (!waiting) return;
+    final r = _rival(round);
+    if (r == null) return;
+    waiting = false;
     int mine, theirs;
     if (rd.numbers) {
-      mine = lnNumberPoints(bestNumber, rd.target);
-      theirs = lnNumberPoints(rd.botValue, rd.target);
-      lastNote = '${rd.target}: ${kt(play.lang, 'you')} $bestNumber · ${kt(play.lang, 'rival')} ${rd.botValue}';
+      mine = lnNumberPoints(_myRoundValue, rd.target);
+      theirs = lnNumberPoints(r.$2, rd.target);
+      lastNote = '${rd.target}: ${kt(play.lang, 'you')} $_myRoundValue · ${kt(play.lang, 'rival')} ${r.$2 < 0 ? '—' : r.$2}';
     } else {
-      mine = bestWord.length == 9 ? 18 : bestWord.length;
-      theirs = rd.botWord.length == 9 ? 18 : rd.botWord.length;
-      lastNote = '${kt(play.lang, 'you')} ${bestWord.isEmpty ? '—' : lx.up(bestWord)} · ${kt(play.lang, 'rival')} ${lx.up(rd.botWord)}';
+      mine = _myRoundWord.length == 9 ? 18 : _myRoundWord.length;
+      theirs = r.$1.length == 9 ? 18 : r.$1.length;
+      lastNote = '${kt(play.lang, 'you')} ${_myRoundWord.isEmpty ? '—' : lx.up(_myRoundWord)} · ${kt(play.lang, 'rival')} ${r.$1.isEmpty ? '—' : lx.up(r.$1)}';
     }
-    setState(() {
-      me += mine;
-      bot += theirs;
-      between = true;
-    });
-    play.ctx.sfx(mine >= theirs ? Sfx.combo : Sfx.error);
+    me += mine;
+    bot += theirs;
+    if (!quiet) play.ctx.sfx(mine >= theirs ? Sfx.combo : Sfx.error);
     if (round == p.rounds.length - 1) {
       ended = true;
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (!mounted) return;
+        final n = net;
+        if (n != null) n.finish(me > bot ? n.me : (me < bot ? n.opp : -1));
         if (me >= bot) {
           play.ctx.sfx(Sfx.win);
           play.win(score: me * 20, stars: me - bot >= 10 ? 3 : (me - bot >= 4 ? 2 : 1), seconds: seconds, stats: {'words_found': 2});
@@ -449,6 +616,7 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
   }
 
   void _next() {
+    if (waiting) return;
     setState(() {
       round++;
       roundStart = seconds;
@@ -567,7 +735,7 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
         status: '${kt(lang, rd.numbers ? 'numbers' : 'letters')} ${round + 1}/${p.rounds.length}   ${kt(lang, 'you')} $me · ${kt(lang, 'rival')} $bot',
       ),
       flashLine(),
-      if (between) Panel(child: Text(lastNote, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
+      if (between) Panel(child: Text(waiting ? kt(lang, 'waitRival') : lastNote, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
       Expanded(
         child: Center(
           child: SingleChildScrollView(
@@ -596,7 +764,7 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
           ),
         ),
       ),
-      if (between && !ended) BigButton(label: kt(lang, 'next'), icon: Icons.arrow_forward, onPressed: _next),
+      if (between && !ended && !waiting) BigButton(label: kt(lang, 'next'), icon: Icons.arrow_forward, onPressed: _next),
       const SizedBox(height: 8),
     ]);
   }

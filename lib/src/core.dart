@@ -132,7 +132,8 @@ class WordRules extends GameRules<WLevel> {
 String _deviceWordLang() {
   try {
     final code = WidgetsBinding.instance.platformDispatcher.locale.languageCode;
-    return wordLangFor(code);
+    // Bütün içerik dilleri: tür kendi dillerinde yoksa generate() en yakın dile düşer.
+    return wordLangFor(code, kAllWordLangs);
   } catch (_) {
     return 'en';
   }
@@ -422,6 +423,12 @@ void registerWordLicenses() {
         'Inappropriate-word filtering uses the List of Dirty, Naughty, Obscene, and Otherwise Bad Words '
         '(https://github.com/LDNOOBW), CC BY 4.0. Dictionaries from wooorm/dictionaries were used only '
         'as a build-time filter and are not distributed.\n\n'
+        'Filipino and Urdu lists and Japanese word frequencies come from wordfreq by Robyn Speer '
+        '(https://github.com/rspeer/wordfreq), data CC BY-SA 4.0. Japanese readings come from JMdict '
+        '(Electronic Dictionary Research and Development Group, https://www.edrdg.org/), CC BY-SA 4.0. '
+        'The Finnish list is filtered with the Kotus word list (Institute for the Languages of Finland), '
+        'CC BY 4.0. LibreOffice hunspell dictionaries (ar, fa, he, id) were used only as a build-time '
+        'filter and are not distributed.\n\n'
         'Clues, proverb selections, categories and word pairs were written by the studio.',
       )));
 }

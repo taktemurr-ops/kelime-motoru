@@ -14,8 +14,24 @@ import 'content_hu.dart';
 import 'content_ru.dart';
 import 'content_uk.dart';
 import 'content_el.dart';
+import 'content_fi.dart';
+import 'content_id.dart';
+import 'content_ms.dart';
+import 'content_fil.dart';
+import 'content_ar.dart';
+import 'content_fa.dart';
+import 'content_he.dart';
+import 'content_ur.dart';
+import 'content_ja.dart';
+import 'content_vi.dart';
+import 'content_ko.dart';
+import 'content_zh.dart';
+import 'content_hi.dart';
+import 'content_bn.dart';
+import 'content_th.dart';
 
-/// TR ve EN dışındaki kelime dillerinin içerikleri.
+/// TR ve EN dışındaki içerik dillerinin içerikleri (ipucu yalnızca kelime
+/// listesi olan dillerde; vi, ko, zh, hi, bn, th bütün-kelime türlerindedir).
 const Map<String, List<String>> kCluesByLang = {
   'de': kCluesDe,
   'es': kCluesEs,
@@ -33,6 +49,15 @@ const Map<String, List<String>> kCluesByLang = {
   'ru': kCluesRu,
   'uk': kCluesUk,
   'el': kCluesEl,
+  'fi': kCluesFi,
+  'id': kCluesId,
+  'ms': kCluesMs,
+  'fil': kCluesFil,
+  'ar': kCluesAr,
+  'fa': kCluesFa,
+  'he': kCluesHe,
+  'ur': kCluesUr,
+  'ja': kCluesJa,
 };
 const Map<String, List<String>> kProverbsByLang = {
   'de': kProverbsDe,
@@ -51,6 +76,21 @@ const Map<String, List<String>> kProverbsByLang = {
   'ru': kProverbsRu,
   'uk': kProverbsUk,
   'el': kProverbsEl,
+  'fi': kProverbsFi,
+  'id': kProverbsId,
+  'ms': kProverbsMs,
+  'fil': kProverbsFil,
+  'ar': kProverbsAr,
+  'fa': kProverbsFa,
+  'he': kProverbsHe,
+  'ur': kProverbsUr,
+  'ja': kProverbsJa,
+  'vi': kProverbsVi,
+  'ko': kProverbsKo,
+  'zh': kProverbsZh,
+  'hi': kProverbsHi,
+  'bn': kProverbsBn,
+  'th': kProverbsTh,
 };
 const Map<String, List<String>> kGroupsByLang = {
   'de': kGroupsDe,
@@ -69,6 +109,21 @@ const Map<String, List<String>> kGroupsByLang = {
   'ru': kGroupsRu,
   'uk': kGroupsUk,
   'el': kGroupsEl,
+  'fi': kGroupsFi,
+  'id': kGroupsId,
+  'ms': kGroupsMs,
+  'fil': kGroupsFil,
+  'ar': kGroupsAr,
+  'fa': kGroupsFa,
+  'he': kGroupsHe,
+  'ur': kGroupsUr,
+  'ja': kGroupsJa,
+  'vi': kGroupsVi,
+  'ko': kGroupsKo,
+  'zh': kGroupsZh,
+  'hi': kGroupsHi,
+  'bn': kGroupsBn,
+  'th': kGroupsTh,
 };
 const Map<String, List<String>> kSynonymsByLang = {
   'de': kSynonymsDe,
@@ -87,6 +142,21 @@ const Map<String, List<String>> kSynonymsByLang = {
   'ru': kSynonymsRu,
   'uk': kSynonymsUk,
   'el': kSynonymsEl,
+  'fi': kSynonymsFi,
+  'id': kSynonymsId,
+  'ms': kSynonymsMs,
+  'fil': kSynonymsFil,
+  'ar': kSynonymsAr,
+  'fa': kSynonymsFa,
+  'he': kSynonymsHe,
+  'ur': kSynonymsUr,
+  'ja': kSynonymsJa,
+  'vi': kSynonymsVi,
+  'ko': kSynonymsKo,
+  'zh': kSynonymsZh,
+  'hi': kSynonymsHi,
+  'bn': kSynonymsBn,
+  'th': kSynonymsTh,
 };
 const Map<String, List<String>> kAntonymsByLang = {
   'de': kAntonymsDe,
@@ -105,4 +175,19 @@ const Map<String, List<String>> kAntonymsByLang = {
   'ru': kAntonymsRu,
   'uk': kAntonymsUk,
   'el': kAntonymsEl,
+  'fi': kAntonymsFi,
+  'id': kAntonymsId,
+  'ms': kAntonymsMs,
+  'fil': kAntonymsFil,
+  'ar': kAntonymsAr,
+  'fa': kAntonymsFa,
+  'he': kAntonymsHe,
+  'ur': kAntonymsUr,
+  'ja': kAntonymsJa,
+  'vi': kAntonymsVi,
+  'ko': kAntonymsKo,
+  'zh': kAntonymsZh,
+  'hi': kAntonymsHi,
+  'bn': kAntonymsBn,
+  'th': kAntonymsTh,
 };

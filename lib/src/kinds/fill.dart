@@ -333,7 +333,7 @@ class CipherKind extends WordKind {
   const CipherKind();
 
   @override
-  List<String>? get contentLangs => kClueLangs;
+  List<String>? get contentLangs => kCipherLangs;
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {

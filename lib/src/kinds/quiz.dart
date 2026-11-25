@@ -95,7 +95,7 @@ class ProverbKind extends WordKind {
   const ProverbKind();
 
   @override
-  List<String>? get contentLangs => kClueLangs;
+  List<String>? get contentLangs => kQuizLangs;
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
@@ -104,10 +104,14 @@ class ProverbKind extends WordKind {
     final order = List.of(all);
     r.shuffle(order);
     final qs = <Question>[];
-    final pool = <String>[for (final s in all) ...sentenceWords(s, lx.lang).where((w) => w.length >= 4)];
+    final minTok = proverbMinToken(lx.lang);
+    final pool = <String>[for (final s in all) ...sentenceWords(s, lx.lang).where((w) => w.length >= minTok)];
     for (final s in order.take(n)) {
       final raw = s.split(' ');
-      final cands = [for (var i = 0; i < raw.length; i++) if (raw[i].length >= 4 && !raw[i].contains(RegExp(r"['’]"))) i];
+      final cands = [
+        for (var i = 0; i < raw.length; i++)
+          if (sentenceWords(raw[i], lx.lang).length == 1 && sentenceWords(raw[i], lx.lang).first.length >= minTok) i,
+      ];
       if (cands.isEmpty) continue;
       final k = r.pick(cands);
       final answer = sentenceWords(raw[k], lx.lang).first;
@@ -280,7 +284,7 @@ class PairsKind extends WordKind {
   const PairsKind();
 
   @override
-  List<String>? get contentLangs => kClueLangs;
+  List<String>? get contentLangs => kQuizLangs;
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
@@ -470,7 +474,7 @@ class GroupsKind extends WordKind {
   const GroupsKind();
 
   @override
-  List<String>? get contentLangs => kClueLangs;
+  List<String>? get contentLangs => kQuizLangs;
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {

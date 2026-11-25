@@ -107,7 +107,7 @@ class _GuessViewState extends State<_GuessView> with SecondsTicker, Flash {
     final r = SeededRandom(play.seed ^ 0x6e55);
     final need = <String>[for (final a in p.answers) ...a.split('')];
     final words = lx.pool(p.len, 3, minSize: 60);
-    for (var k = 0; k < 3 + p.answers.length && words.isNotEmpty; k++) {
+    for (var k = 0; k < (p.answers.length > 2 ? 2 : 3 + p.answers.length) && words.isNotEmpty; k++) {
       need.addAll(r.pick(words).split(''));
     }
     return lx.keyPool(need, play.seed, size: need.toSet().length + 4);

@@ -94,10 +94,18 @@ void main() {
     final hoc = vi.encode('học sinh')!;
     expect(hoc.length, 2);
     expect(vi.up(hoc), 'HỌC SINH');
-    expect(vi.kin(hoc[0]).map(vi.tileText).every((t) => viToneless(t) == 'hoc'), isTrue);
-    final bad = tileMisspellings(hoc, vi, SeededRandom(5), 2);
-    expect(bad, isNotEmpty);
-    expect(bad.every((b) => !vi.has(b)), isTrue);
+    final lam = vi.encode('làm việc')!;
+    expect(vi.kin(lam[0]).map(vi.tileText), contains('lạm'));
+    for (final w in vi.words.take(100)) {
+      for (final ch in w.split('')) {
+        expect(vi.kin(ch).every((k) => viToneless(vi.tileText(k)) == viToneless(vi.tileText(ch))), isTrue);
+      }
+      final bad = tileMisspellings(w, vi, SeededRandom(5), 2);
+      for (final b in bad) {
+        expect(vi.has(b), isFalse);
+        expect(viToneless(vi.up(b).toLowerCase()), viToneless(vi.up(w).toLowerCase()));
+      }
+    }
     // Çince: okunuş (pinyin) ipucu.
     expect(Lexicon.of('zh').reading('学生'), 'xué shēng');
     // Hintçe: bitişik ünsüzler tek taş.

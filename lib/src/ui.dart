@@ -315,26 +315,33 @@ class TilePool extends StatelessWidget {
               ),
             ),
           );
+      // Çok tahtalı tahminde havuz büyür: en çok ekranın üçte biri, gerisi kaydırılır.
+      final maxH = MediaQuery.sizeOf(context).height * 0.3;
       return Column(mainAxisSize: MainAxisSize.min, children: [
-        Wrap(alignment: WrapAlignment.center, children: [
-          for (final t in tiles)
-            key(
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(lx.upCh(t),
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: (colors[t]?.computeLuminance() ?? 1) < 0.45 ? Colors.white : WColors.ink,
-                      )),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH < 110 ? 110 : maxH),
+          child: SingleChildScrollView(
+            child: Wrap(alignment: WrapAlignment.center, children: [
+              for (final t in tiles)
+                key(
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(lx.upCh(t),
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: (colors[t]?.computeLuminance() ?? 1) < 0.45 ? Colors.white : WColors.ink,
+                          )),
+                    ),
+                  ),
+                  () => onKey(t),
+                  color: colors[t],
                 ),
-              ),
-              () => onKey(t),
-              color: colors[t],
-            ),
-        ]),
+            ]),
+          ),
+        ),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           if (onBack != null) key(const Icon(Icons.backspace_outlined, size: 20, color: WColors.ink), onBack, w: 1.4),
           if (onEnter != null) key(const Icon(Icons.keyboard_return, size: 20, color: WColors.ink), onEnter, w: 2, color: WColors.near),

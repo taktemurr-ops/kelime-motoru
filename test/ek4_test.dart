@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kelime_motoru/kelime_motoru.dart';
 import 'package:kelime_motoru/src/kinds/ek4.dart';
+import 'package:kelime_motoru/src/kinds/theme.dart';
 import 'package:studio_core/core/rng.dart';
 
 void main() {
@@ -40,6 +41,26 @@ void main() {
         final p = const CluesKind().make(lx, d, SeededRandom(d * 7 + l.length));
         if (p == null) continue;
         expect(const CluesKind().check(p, lx), isTrue, reason: '$l $d');
+      }
+    }
+  });
+  test('tema avı: Hamilton yolu ve 33 dilde bölüm', () {
+    final r = SeededRandom(5);
+    for (final (w, h) in [(3, 4), (5, 6), (6, 7)]) {
+      final path = ThemeKind.hamiltonPath(w, h, r);
+      expect(path.toSet().length, w * h);
+      for (var i = 1; i < path.length; i++) {
+        expect(ThemeKind.adjacent(path[i - 1], path[i], w), isTrue);
+      }
+    }
+    for (final l in kAllWordLangs) {
+      final lx = Lexicon.of(l);
+      // ignore: avoid_print
+      print('tema-avi $l: ${ThemeKind.themes(lx).length} tema');
+      for (final d in [1, 5, 10]) {
+        final p = const ThemeKind().make(lx, d, SeededRandom(d * 13 + l.length)) as ThemePuzzle?;
+        expect(p, isNotNull, reason: '$l $d');
+        expect(const ThemeKind().check(p!, lx), isTrue, reason: '$l $d');
       }
     }
   });

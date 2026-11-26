@@ -6,6 +6,7 @@ import 'package:studio_core/core/rng.dart';
 
 import '../clues.dart';
 import '../core.dart';
+import '../studio_chrome.dart';
 import '../texts.dart';
 import '../ui.dart';
 import '../words.dart';
@@ -519,12 +520,12 @@ class _CipherViewState extends State<_CipherView> with SecondsTicker, Flash {
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w800,
-                                color: p.givens.contains(guess[p.codes[ch]]) ? WColors.accent : WColors.ink,
+                                color: p.givens.contains(guess[p.codes[ch]]) ? const Color(0xFF2B5A96) : WColors.ink,
                               ),
                             ),
                           ),
                         ),
-                        Text('${p.codes[ch]}', style: TextStyle(fontSize: 11, color: WColors.ink.withValues(alpha: 0.7))),
+                        Text('${p.codes[ch]}', style: const TextStyle(fontSize: 11, color: kStudioSubtle)),
                       ]),
                     ),
                   ),

@@ -241,7 +241,7 @@ class _SearchViewState extends State<_SearchView> with SecondsTicker, Flash {
               lx.up(p.words[k]),
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: found.contains(k) ? WColors.miss : WColors.ink,
+                color: found.contains(k) ? Colors.white54 : Colors.white,
                 decoration: found.contains(k) ? TextDecoration.lineThrough : null,
               ),
             ),

@@ -252,7 +252,7 @@ class _QuizViewState extends State<_QuizView> with SecondsTicker, Flash {
               if (q.prompt.isNotEmpty)
                 Panel(
                   padding: const EdgeInsets.all(16),
-                  child: Text(q.prompt, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: WColors.ink)),
+                  child: Text(q.prompt, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)),
                 ),
               const SizedBox(height: 14),
               for (var i = 0; i < q.options.length; i++)
@@ -437,14 +437,14 @@ class _PairsViewState extends State<_PairsView> with SecondsTicker, Flash {
             height: 52,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: done ? WColors.hit.withValues(alpha: 0.35) : (bad ? WColors.warm : (on ? WColors.near : WColors.tile)),
+              color: done ? const Color(0xFFCDEBD3) : (bad ? WColors.warm : (on ? WColors.near : WColors.tile)),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: WColors.tileEdge),
             ),
             child: FittedBox(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(lx.up(w), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: done ? WColors.miss : WColors.ink)),
+                child: Text(lx.up(w), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: done ? const Color(0xFF4A6B57) : WColors.ink)),
               ),
             ),
           ),
@@ -467,7 +467,7 @@ class _PairsViewState extends State<_PairsView> with SecondsTicker, Flash {
                   _chip(rd.left[i], on: selL == i, done: doneL.contains(i), bad: false, onTap: () => setState(() => selL = i)),
               ]),
             ),
-            Icon(rd.antonyms ? Icons.compare_arrows : Icons.drag_handle, color: WColors.miss),
+            Icon(rd.antonyms ? Icons.compare_arrows : Icons.drag_handle, color: Colors.white70),
             Expanded(
               child: Column(children: [
                 for (var j = 0; j < rd.right.length; j++)

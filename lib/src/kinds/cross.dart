@@ -520,7 +520,7 @@ class _CrossViewState extends State<_CrossView> with SecondsTicker, Flash {
       if (clueText.isNotEmpty)
         Panel(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text(clueText, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: WColors.ink)),
+          child: Text(clueText, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Colors.white)),
         ),
       WordKeyboard(
         lx: lx,
@@ -567,7 +567,7 @@ class _CrossViewState extends State<_CrossView> with SecondsTicker, Flash {
                 fit: BoxFit.scaleDown,
                 child: Text(
                   shown.isEmpty ? '' : lx.upCh(shown),
-                  style: TextStyle(fontSize: cs * 0.55, fontWeight: given ? FontWeight.w900 : FontWeight.w700, color: given ? WColors.accent : WColors.ink),
+                  style: TextStyle(fontSize: cs * 0.55, fontWeight: given ? FontWeight.w900 : FontWeight.w700, color: given ? const Color(0xFF2B5A96) : WColors.ink),
                 ),
               ),
             ),

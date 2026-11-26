@@ -859,26 +859,22 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
       else
         Padding(
           padding: const EdgeInsets.all(4),
-          // Dar ekranda (ör. 320 nokta) yedi taş sığsın diye taş küçülür.
-          child: LayoutBuilder(builder: (context, c) {
-            final tile = rack.isEmpty ? 44.0 : ((c.maxWidth / rack.length) - 4).clamp(28.0, 44.0);
-            return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              for (var i = 0; i < rack.length; i++)
-                Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Opacity(
-                    opacity: usedIdx.contains(i) || !canAct ? 0.35 : 1,
-                    child: LetterTile(
-                      letter: lx.upCh(rack[i]),
-                      value: lx.letterValue(rack[i]),
-                      size: tile,
-                      selected: selRack == i,
-                      onTap: usedIdx.contains(i) || !canAct ? null : () => setState(() => selRack = i),
-                    ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            for (var i = 0; i < rack.length; i++)
+              Padding(
+                padding: const EdgeInsets.all(2),
+                child: Opacity(
+                  opacity: usedIdx.contains(i) || !canAct ? 0.35 : 1,
+                  child: LetterTile(
+                    letter: lx.upCh(rack[i]),
+                    value: lx.letterValue(rack[i]),
+                    size: 44,
+                    selected: selRack == i,
+                    onTap: usedIdx.contains(i) || !canAct ? null : () => setState(() => selRack = i),
                   ),
                 ),
-            ]);
-          }),
+              ),
+          ]),
         ),
       Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
         IconButton.filledTonal(tooltip: kt(lang, 'clear'), onPressed: () => setState(pending.clear), icon: const Icon(Icons.undo)),

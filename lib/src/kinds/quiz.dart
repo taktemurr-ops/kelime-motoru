@@ -6,6 +6,7 @@ import 'package:studio_core/core/rng.dart';
 
 import '../clues.dart';
 import '../core.dart';
+import '../studio_chrome.dart';
 import '../texts.dart';
 import '../ui.dart';
 import '../words.dart';
@@ -261,20 +262,26 @@ class _QuizViewState extends State<_QuizView> with SecondsTicker, Flash {
                     padding: const EdgeInsets.symmetric(vertical: 5),
                     child: SizedBox(
                       width: 320,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(200, 54),
-                          backgroundColor: picked == null
-                              ? WColors.paper
-                              : (i == q.answer ? WColors.hit : (i == picked ? WColors.warm : WColors.paper)),
-                          foregroundColor: picked != null && (i == q.answer || i == picked) ? Colors.white : WColors.ink,
-                        ),
-                        onPressed: () => _pick(i),
-                        child: Text(
-                          lx.up(q.options[i]),
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: 1.5),
-                        ),
-                      ),
+                      // Onaylı tasarımın cevap kartı: yarı saydam, vurgu kenarlı.
+                      child: Builder(builder: (context) {
+                        final look = StudioLook.of(context);
+                        final marked = picked != null && (i == q.answer || i == picked);
+                        final bg = marked ? (i == q.answer ? WColors.hit : WColors.warm) : null;
+                        final fg = bg == null ? Colors.white : WColors.on(bg);
+                        return FilledButton(
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(200, 54),
+                            backgroundColor: bg ?? Colors.white.withValues(alpha: 0.08),
+                            foregroundColor: fg,
+                            side: BorderSide(color: bg ?? look.accent.withValues(alpha: 0.55), width: 1.4),
+                          ),
+                          onPressed: () => _pick(i),
+                          child: Text(
+                            lx.up(q.options[i]),
+                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: fg),
+                          ),
+                        );
+                      }),
                     ),
                   ),
             ]),

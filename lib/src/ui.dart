@@ -120,7 +120,11 @@ class WordBar extends StatelessWidget {
         border: Border.all(color: look.accent.withValues(alpha: 0.45), width: 1.2),
       ),
       child: Row(children: [
-        if (left.isNotEmpty) Text(left, style: TextStyle(fontWeight: FontWeight.w900, color: look.number)),
+        if (left.isNotEmpty)
+          Flexible(
+            child: Text(left,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w900, color: look.number)),
+          ),
         const SizedBox(width: 8),
         Expanded(
           child: FittedBox(
@@ -141,7 +145,12 @@ class WordBar extends StatelessWidget {
           ),
         ...actions,
         if (onHint != null)
-          IconButton(tooltip: kt(lang, 'hint'), onPressed: onHint, icon: const Icon(Icons.lightbulb_rounded, color: StudioLook.gold)),
+          IconButton(
+            tooltip: kt(lang, 'hint'),
+            visualDensity: VisualDensity.compact,
+            onPressed: onHint,
+            icon: const Icon(Icons.lightbulb_rounded, color: StudioLook.gold),
+          ),
       ]),
     );
   }

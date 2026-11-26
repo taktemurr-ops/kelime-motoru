@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:studio_core/app/game_api.dart';
 import 'package:studio_core/core/game_rules.dart';
+import 'package:studio_core/core/global_daily.dart';
 import 'package:studio_core/core/level_plan.dart';
 import 'package:studio_core/core/missions.dart';
 import 'package:studio_core/core/rng.dart';
@@ -57,6 +58,9 @@ abstract class WordKind {
   /// İki kişilik (rakipli) tür mü: çevrimiçi masa ve bilgisayara karşı oyun.
   int get players => 1;
 
+  /// Bir masada en çok kaç kişi (aynı cihazda ya da çevrimiçi) oynayabilir.
+  int get maxPlayers => players;
+
   List<GameStat> get stats => const [
         GameStat('rounds_won', 'Kazanılan bölüm', 'Levels won', scale: 10),
         GameStat('words_found', 'Bulunan kelime', 'Words found', scale: 200),
@@ -105,9 +109,29 @@ class WordRules extends GameRules<WLevel> {
   @override
   int get levelCount => levels;
 
-  /// Rakipli türlerde 2: merkez "Bilgisayara karşı" ve "Çevrimiçi masa" sunar.
+  /// Rakipli türlerde 2 (kelime tahtasında 4'e kadar): merkez "Bilgisayara
+  /// karşı", aynı cihazda oyun ve "Çevrimiçi masa" sunar.
   @override
-  int get localPlayers => kindFor(5).players;
+  int get localPlayers => kindFor(5).maxPlayers;
+
+  @override
+  List<int> get onlineSeatChoices {
+    final k = kindFor(5);
+    return k.maxPlayers > k.players ? [for (var i = k.players; i <= k.maxPlayers; i++) i] : const [];
+  }
+
+  /// Günün Bulmacası: tek kişilik türler katılır (rakipli türler hariç).
+  @override
+  bool get globalDaily => [3, 4, 5, 6].every((d) => kindForLevel(d).players == 1);
+
+  /// Kelime bulmacası dile göre kurulur: her dilin günlük tablosu ayrı.
+  @override
+  bool get dailyPerLanguage => true;
+
+  /// Herkese aynı günlük bölüm: haftanın gününe göre orta zorluk (3–6).
+  @override
+  LevelSpec globalDailySpec(String utcDay) =>
+      GlobalDaily.defaultSpec(gameId, utcDay, difficulty: GlobalDaily.defaultDifficulty(utcDay) - 1);
 
   @override
   List<String> get optionalMechanics => const [];
@@ -161,26 +185,45 @@ class WordNet {
   final int opp;
   final List<String> mine = [];
   final List<String> theirs = [];
+
+  /// Bütün koltukların hamleleri, sırayla (dil hamleleri hariç; bu cihazınkiler
+  /// ve ev sahibinin bot koltukları adına gönderdikleri dahil).
+  final List<(int, String)> log = [];
   String? lang;
   final List<VoidCallback> _listeners = [];
   StreamSubscription<(int, String)>? _sub;
 
   WordNet(this.link) : me = link.mySeat, opp = link.mySeat == 0 ? 1 : 0;
 
-  /// Maçta gerçek bir rakip varsa ağ bağlantısı; bot rakipte null (çevrimdışı gibi oynanır).
+  /// Maçta gerçek bir rakip varsa ağ bağlantısı; yalnız botlara karşı null
+  /// (çevrimdışı gibi oynanır).
   static WordNet? of(PlayContext ctx) {
     final m = ctx.match;
     if (m == null) return null;
-    final opp = m.mySeat == 0 ? 1 : 0;
-    if (ctx.role(opp) != SeatRole.remote) return null;
+    final n = m.names.length < 2 ? 2 : m.names.length;
+    var remote = false;
+    for (var i = 0; i < n; i++) {
+      if (i != m.mySeat && ctx.role(i) == SeatRole.remote) remote = true;
+    }
+    if (!remote) return null;
     return WordNet(m).._start();
   }
+
+  /// Masadaki koltuk sayısı.
+  int get seats => link.names.length < 2 ? 2 : link.names.length;
+
+  /// Bu cihaz botların (ve kopanların) hamlelerini hesaplıyor mu.
+  bool get isHost => link.isHost;
+
+  /// Koltuğun bağlantısı koptu mu (artık bot oynar).
+  bool gone(int seat) => link.dropped.contains(seat);
 
   void _take(int seat, String mv) {
     if (mv.startsWith('L:')) {
       if (seat == 0) lang = mv.substring(2);
       return;
     }
+    log.add((seat, mv));
     if (seat == me) {
       mine.add(mv);
     } else if (seat == opp) {
@@ -204,10 +247,19 @@ class WordNet {
   /// Rakip bağlantıyı kopardı mı (artık bilgisayar oynar).
   bool get oppGone => link.dropped.contains(opp);
 
-  /// Hamle gönder (kendi günlüğüne de yazılır).
-  void send(String mv) {
-    if (!mv.startsWith('L:')) mine.add(mv);
-    unawaited(link.send(mv).catchError((Object _) {}));
+  /// Hamle gönder (kendi günlüğüne de yazılır). [asSeat]: ev sahibi bot ya
+  /// da bağlantısı kopan koltuk adına oynar.
+  void send(String mv, {int? asSeat}) {
+    if (!mv.startsWith('L:')) {
+      final seat = asSeat ?? me;
+      log.add((seat, mv));
+      if (seat == me) {
+        mine.add(mv);
+      } else if (seat == opp) {
+        theirs.add(mv);
+      }
+    }
+    unawaited(link.send(mv, asSeat: asSeat).catchError((Object _) {}));
   }
 
   /// Bu türde daha önce gönderilmiş dil hamlesi var mı.
@@ -344,7 +396,7 @@ class _WordStageState extends State<WordStage> {
   void _onNet() {
     final n = net;
     if (n == null || !_waitLang || !mounted) return;
-    if (n.lang != null || n.oppGone) {
+    if (n.lang != null || n.gone(0)) {
       setState(() {
         _waitLang = false;
         _apply(n.lang ?? lv.lang, keepResume: false);

@@ -65,7 +65,8 @@ void main() {
   test('rakipli türler iki kişilik, diğerleri tek kişilik', () {
     for (final e in kWordKinds.entries) {
       final r = WordRules(gameId: 'oyun-t-${e.key}', kindFor: (_) => e.value, lang: 'tr');
-      expect(r.localPlayers, rival.contains(e.key) ? 2 : 1, reason: e.key);
+      expect(r.localPlayers, e.key == 'kelime-kurma' ? 4 : (rival.contains(e.key) ? 2 : 1), reason: e.key);
+      expect(r.globalDaily, !rival.contains(e.key), reason: e.key);
     }
   });
 

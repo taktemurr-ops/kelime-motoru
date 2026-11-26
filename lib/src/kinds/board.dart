@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:studio_core/app/game_api.dart';
 import 'package:studio_core/app/services/audio.dart';
+import 'package:studio_core/core/game_rules.dart';
 import 'package:studio_core/core/rng.dart';
 
 import '../core.dart';
@@ -9,7 +11,10 @@ import '../texts.dart';
 import '../ui.dart';
 import '../words.dart';
 
-/// Kelime kurma tahtası: rakibe karşı harf taşlarıyla tahtaya kelime dizme.
+/// Kelime kurma tahtası: 2–4 kişi (bilgisayar, aynı cihaz ya da çevrimiçi)
+/// harf taşlarıyla tahtaya kelime dizer. Çevrimiçi maçta hamle günlüğü
+/// ("P:hücre=harf;…" yerleştirme, "S" değişim, "X" pas, "C" itiraz) bütün
+/// cihazlarda aynı sırayla uygulanır; torba maçın ortak tohumundan kurulur.
 /// Tahta düzeni ve taş dağılımı stüdyonun kendisine aittir.
 const kBoardN = 11;
 
@@ -52,6 +57,10 @@ class BoardKind extends WordKind {
 
   @override
   int get players => 2;
+
+  /// Aynı cihazda ya da çevrimiçi masada 2–4 kişi.
+  @override
+  int get maxPlayers => 4;
 
   @override
   WPuzzle? make(Lexicon lx, int d, SeededRandom r) {
@@ -103,8 +112,9 @@ class BoardRules {
   static const n = kBoardN;
   static const center = (kBoardN ~/ 2) * kBoardN + kBoardN ~/ 2;
 
-  /// Geçerliyse hamleyi döndürür.
-  BMove? evaluate(List<String> board, Map<int, String> tiles) {
+  /// Geçerliyse hamleyi döndürür. [dict] false: yalnızca dizilim denetlenir
+  /// (sözlükte olmayan kelime itiraz edilene kadar tahtada kalabilir).
+  BMove? evaluate(List<String> board, Map<int, String> tiles, {bool dict = true}) {
     if (tiles.isEmpty) return null;
     final cells = tiles.keys.toList()..sort();
     final ys = cells.map((c) => c ~/ n).toSet(), xs = cells.map((c) => c % n).toSet();
@@ -155,8 +165,10 @@ class BoardRules {
     }
     if (!empty && !touches) return null;
     if (words.isEmpty) return null;
-    for (final w in words) {
-      if (!lx.has(w)) return null;
+    if (dict) {
+      for (final w in words) {
+        if (!lx.has(w)) return null;
+      }
     }
     if (tiles.length == 7) score += 35;
     return BMove(Map.of(tiles), score, words);
@@ -266,65 +278,49 @@ class BoardRules {
   }
 }
 
-class _BoardView extends StatefulWidget {
-  final WordPlay play;
-  const _BoardView({required this.play});
+/// İtiraz edilebilecek son yerleştirme (geri alma için her şeyi tutar).
+class _LastPlay {
+  final int seat, score, prevScoreless;
+  final Map<int, String> tiles;
+  final List<String> words;
 
-  @override
-  State<_BoardView> createState() => _BoardViewState();
+  /// Hamleden sonra torbadan çekilen taşlar (çekiliş sırasıyla).
+  final List<String> drawn;
+  const _LastPlay(this.seat, this.tiles, this.words, this.score, this.drawn, this.prevScoreless);
 }
 
-class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
-  late BoardPuzzle p;
-  late BoardRules rules;
-  late List<String> board;
-  late List<String> bag;
-  final List<String> rack = [], botRack = [];
-  final Map<int, int> pending = {}; // hücre → raf dizini
-  int? selRack;
-  int me = 0, bot = 0, myTurns = 0, botTurns = 0, passes = 0;
-  bool botThinking = false;
-  String lastBot = '';
-  late SeededRandom botRng;
+/// Tahtanın oyun durumu: arayüzden bağımsız, her cihazda aynı hamlelerle
+/// aynı sonuca varır (testlerde doğrudan kullanılır).
+class BoardGame {
+  final BoardRules rules;
+  final int seats;
+  final int turnLimit;
+  final List<String> board = List<String>.filled(kBoardN * kBoardN, '');
+  final List<String> bag;
+  final List<List<String>> racks;
+  final List<int> scores, turns;
+  int cur = 0;
 
-  WordPlay get play => widget.play;
-  Lexicon get lx => play.lx;
-  WordNet? get net => play.net;
+  /// Art arda puansız hamle sayısı (pas, değişim, geri alınan hamle, boş itiraz).
+  int scoreless = 0;
+  _LastPlay? last;
 
-  /// Çevrimiçi rakip hâlâ masada mı (koparsa bilgisayar oynar).
-  bool get online => net != null && !net!.oppGone;
-  int _oi = 0;
-  bool _botBusy = false;
+  /// Uygulanan bütün hamleler (kayıt ve geri dönüş için).
+  final List<(int, String)> history = [];
 
-  @override
-  void initState() {
-    super.initState();
-    p = play.puzzle as BoardPuzzle;
-    rules = BoardRules(lx);
-    board = List<String>.filled(kBoardN * kBoardN, '');
-    bag = List.of(p.bag);
-    botRng = SeededRandom(play.seed ^ 0xB0A7);
-    final n = net;
-    // Taşlar koltuk sırasıyla çekilir (0. koltuk önce): iki cihazda aynı torba.
-    if (n != null && n.me == 1) {
-      _draw(botRack);
-      _draw(rack);
-    } else {
-      _draw(rack);
-      _draw(botRack);
+  BoardGame(this.rules, BoardPuzzle p, this.seats)
+      : turnLimit = p.turns,
+        bag = List.of(p.bag),
+        racks = [for (var i = 0; i < seats; i++) <String>[]],
+        scores = List<int>.filled(seats, 0),
+        turns = List<int>.filled(seats, 0) {
+    // Taşlar koltuk sırasıyla çekilir: her cihazda aynı raflar.
+    for (final r in racks) {
+      _draw(r);
     }
-    if (n != null) {
-      n.listen(_onNet);
-      _replay();
-    }
-    startTicker();
   }
 
-  @override
-  void dispose() {
-    net?.unlisten(_onNet);
-    super.dispose();
-  }
+  Lexicon get lx => rules.lx;
 
   void _draw(List<String> r) {
     while (r.length < 7 && bag.isNotEmpty) {
@@ -332,7 +328,7 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
     }
   }
 
-  /// Taş değişimi: raf sıralı olarak torbanın dibine gider (iki cihazda aynı sıra).
+  /// Taş değişimi: raf sıralı olarak torbanın dibine gider (her cihazda aynı sıra).
   void _swapRack(List<String> r) {
     bag.insertAll(0, List.of(r)..sort());
     r.clear();
@@ -354,88 +350,298 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
     return out.isEmpty ? null : out;
   }
 
-  /// Bir hamleyi uygula ([mine]: bu cihazın oyuncusu). "P:hücre=harf;…", "S" değişim, "X" pas.
-  String _apply(bool mine, String mv) {
-    final r = mine ? rack : botRack;
+  bool get over =>
+      turns.every((t) => t >= turnLimit) || (bag.isEmpty && racks.any((r) => r.isEmpty)) || scoreless >= 2 * seats;
+
+  /// Kazanan koltuk; eşitlikte -1.
+  int get winner {
+    final top = scores.reduce(math.max);
+    final at = [for (var i = 0; i < seats; i++) if (scores[i] == top) i];
+    return at.length == 1 ? at.first : -1;
+  }
+
+  /// [seat] şimdi itiraz edebilir mi (yalnızca hemen sonraki oyuncu).
+  bool canChallenge(int seat) {
+    final l = last;
+    return l != null && seat == cur && (l.seat + 1) % seats == seat && !over;
+  }
+
+  /// Son yerleştirmede sözlükte olmayan kelimeler.
+  List<String> get lastInvalid => [for (final w in last?.words ?? const <String>[]) if (!lx.has(w)) w];
+
+  void _endTurn(int seat) {
+    turns[seat]++;
+    cur = (cur + 1) % seats;
+  }
+
+  /// Bir hamleyi uygula ve olayı anlatan kısa metni döndür. Sırası gelmeyen
+  /// koltuğun hamlesi (bozuk günlük) her cihazda aynı biçimde yok sayılır: null.
+  /// Dönen kayıt: (tür, kelimeler, puan) — tür 'P','S','X','C+','C-'.
+  (String, List<String>, int)? apply(int seat, String mv) {
+    if (seat != cur || over) return null;
+    history.add((seat, mv));
+    final r = racks[seat];
+    if (mv == 'C') {
+      final l = last;
+      last = null;
+      if (l == null || (l.seat + 1) % seats != seat) {
+        scoreless++;
+        _endTurn(seat);
+        return ('X', const [], 0);
+      }
+      final bad = [for (final w in l.words) if (!lx.has(w)) w];
+      if (bad.isEmpty) {
+        // Kelimeler geçerli: itiraz eden sırasını kaybeder.
+        scoreless++;
+        _endTurn(seat);
+        return ('C-', l.words, 0);
+      }
+      // Hamle geri alınır: taşlar rafa, çekilenler torbaya, puan düşer.
+      l.tiles.forEach((k, _) => board[k] = '');
+      final lr = racks[l.seat];
+      for (final t in l.drawn) {
+        lr.remove(t);
+      }
+      bag.addAll(l.drawn.reversed);
+      lr.addAll(l.tiles.values);
+      scores[l.seat] -= l.score;
+      scoreless = l.prevScoreless + 1;
+      // İtiraz eden sırasını korur ve şimdi oynar.
+      return ('C+', bad, l.score);
+    }
+    final prev = scoreless;
+    last = null;
     final tiles = decode(mv);
     if (tiles != null) {
-      final m = rules.evaluate(board, tiles);
+      final m = rules.evaluate(board, tiles, dict: false);
       final pool = List.of(r);
-      final ok = m != null && tiles.values.every(pool.remove);
-      if (ok) {
+      if (m != null && tiles.values.every(pool.remove)) {
         m.tiles.forEach((k, v) {
           board[k] = v;
           r.remove(v);
         });
-        if (mine) {
-          me += m.score;
-          myTurns++;
-        } else {
-          bot += m.score;
-          botTurns++;
-        }
-        passes = 0;
+        scores[seat] += m.score;
+        final before = r.length;
         _draw(r);
-        return '${m.words.map(lx.up).join(', ')} +${m.score}';
+        last = _LastPlay(seat, Map.of(m.tiles), m.words, m.score, r.sublist(before), prev);
+        scoreless = 0;
+        _endTurn(seat);
+        return ('P', m.words, m.score);
       }
       mv = 'X';
     }
-    if (mv == 'S' && bag.length >= 7) _swapRack(r);
-    passes++;
-    if (mine) {
-      myTurns++;
+    if (mv == 'S' && bag.length >= 7) {
+      _swapRack(r);
     } else {
-      botTurns++;
+      mv = 'X';
     }
-    return kt(play.lang, 'pass');
+    scoreless++;
+    _endTurn(seat);
+    return (mv, const [], 0);
   }
 
-  /// Maça geri dönüldüyse hamleleri koltuk sırasıyla yeniden uygula.
-  void _replay() {
-    final n = net!;
-    var seat = 0, im = 0;
-    while (true) {
-      if (seat == n.me) {
-        if (im >= n.mine.length) break;
-        _apply(true, n.mine[im++]);
-      } else {
-        if (_oi >= n.theirs.length) break;
-        lastBot = _apply(false, n.theirs[_oi++]);
-      }
-      seat = 1 - seat;
-      if (_gameOver) break;
+  /// Bilgisayarın hamlesi: önce haksız kelimeye itiraz, sonra zorluğa göre
+  /// en iyi ya da daha zayıf bir yerleştirme; yoksa değişim/pas.
+  String botMove(SeededRandom rng, int d) {
+    if (canChallenge(cur) && lastInvalid.isNotEmpty) return 'C';
+    final moves = rules.movesFor(board, racks[cur]);
+    if (moves.isEmpty) return bag.length >= 7 ? 'S' : 'X';
+    final q = (1 - d / 10) * 0.6;
+    final idx = math.min(moves.length - 1, (moves.length * q * rng.nextDouble()).floor());
+    return encode(moves[idx].tiles);
+  }
+}
+
+class _BoardView extends StatefulWidget {
+  final WordPlay play;
+  const _BoardView({required this.play});
+
+  @override
+  State<_BoardView> createState() => _BoardViewState();
+}
+
+class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
+  late BoardPuzzle p;
+  late BoardRules rules;
+  late BoardGame g;
+  late List<SeatRole> roles;
+  final Map<int, int> pending = {}; // hücre → raf dizini
+  int? selRack;
+  String lastMsg = '';
+  late SeededRandom botRng;
+  bool _botBusy = false;
+
+  /// Aynı cihazda oyun: sıradaki oyuncu dokunana kadar raflar gizli.
+  bool _covered = false;
+  int _logPos = 0;
+
+  WordPlay get play => widget.play;
+  Lexicon get lx => play.lx;
+  WordNet? get net => play.net;
+  String get lang => play.lang;
+  int get me => net?.me ?? 0;
+
+  bool get _localMulti => net == null && play.ctx.passAndPlay;
+
+  /// Ekranda rafı gösterilen koltuk.
+  int get viewer => _localMulti ? g.cur : me;
+  List<String> get rack => g.racks[viewer];
+
+  /// Koltuğu bu cihazda bilgisayar mı oynuyor (bot ya da kopan oyuncu).
+  bool _isBot(int s) {
+    if (roles[s] == SeatRole.ai) return true;
+    final n = net;
+    return n != null && roles[s] == SeatRole.remote && n.gone(s);
+  }
+
+  bool get myTurn => !ended && roles[g.cur] == SeatRole.local && (_localMulti || g.cur == me);
+
+  String seatName(int s) {
+    if (net == null && !_localMulti) return s == me ? kt(lang, 'you') : kt(lang, 'bot');
+    final name = play.ctx.seatName(s);
+    if (s == me && !_localMulti) return '${kt(lang, 'you')} ($name)';
+    return roles[s] == SeatRole.ai ? '$name 🤖' : name;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    p = play.puzzle as BoardPuzzle;
+    rules = BoardRules(lx);
+    botRng = SeededRandom(play.seed ^ 0xB0A7);
+    final n = net;
+    final ctx = play.ctx;
+    int seats;
+    if (n != null) {
+      seats = n.seats.clamp(2, 4);
+      roles = [for (var i = 0; i < seats; i++) i == n.me ? SeatRole.local : (ctx.role(i) == SeatRole.local ? SeatRole.remote : ctx.role(i))];
+    } else if (ctx.passAndPlay) {
+      seats = ctx.seats.length.clamp(2, 4);
+      roles = List.filled(seats, SeatRole.local);
+    } else {
+      seats = 2;
+      roles = const [SeatRole.local, SeatRole.ai];
     }
-    botThinking = seat != n.me;
-    if (_gameOver) WidgetsBinding.instance.addPostFrameCallback((_) => _finish());
+    g = BoardGame(rules, p, seats);
+    if (n != null) {
+      n.listen(_onNet);
+      _pump(replay: true);
+    } else {
+      // Kaldığı yerden: kayıtlı hamleler yeniden uygulanır.
+      final saved = play.resume['bl'];
+      if (saved is List && play.resume['bn'] == seats) {
+        for (final e in saved) {
+          if (e is List && e.length == 2 && e[0] is num && e[1] is String) g.apply((e[0] as num).toInt(), e[1] as String);
+        }
+      }
+      _covered = _localMulti;
+    }
+    startTicker((play.resume['s'] as num?)?.toInt() ?? 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _afterChange());
+  }
+
+  @override
+  void dispose() {
+    net?.unlisten(_onNet);
+    super.dispose();
+  }
+
+  void _save() {
+    if (net != null) return;
+    play.save({
+      'bn': g.seats,
+      's': seconds,
+      'bl': [for (final (s, m) in g.history) [s, m]],
+    });
+  }
+
+  /// Günlükteki yeni hamleleri sırayla uygular (çevrimiçi).
+  void _pump({bool replay = false}) {
+    final n = net;
+    if (n == null) return;
+    while (_logPos < n.log.length) {
+      final (seat, mv) = n.log[_logPos++];
+      final r = g.apply(seat, mv);
+      if (r != null && !replay) _announce(seat, r);
+    }
+  }
+
+  void _announce(int seat, (String, List<String>, int) r) {
+    final who = seatName(seat);
+    switch (r.$1) {
+      case 'P':
+        lastMsg = '$who: ${r.$2.map(lx.up).join(', ')} +${r.$3}';
+      case 'C+':
+        lastMsg = '$who: ${kt(lang, 'upheld')} (${r.$2.map(lx.up).join(', ')})';
+        flash(kt(lang, 'upheld'));
+      case 'C-':
+        lastMsg = '$who: ${kt(lang, 'rejected')}';
+        flash(kt(lang, 'rejected'));
+      case 'S':
+        lastMsg = '$who: ${kt(lang, 'swap')}';
+      default:
+        lastMsg = '$who: ${kt(lang, 'pass')}';
+    }
   }
 
   void _onNet() {
-    final n = net;
-    if (n == null || !mounted || ended || !botThinking) return;
-    if (_oi >= n.theirs.length) return;
-    setState(() {
-      lastBot = _apply(false, n.theirs[_oi++]);
-      botThinking = false;
-    });
+    if (!mounted || ended) return;
+    setState(_pump);
     play.ctx.sfx(Sfx.tap);
-    if (_gameOver) _finish();
+    _afterChange();
   }
 
   @override
   void onTick() {
-    // Rakip koptuysa sırası bilgisayara geçer.
-    if (!ended && botThinking && net != null && net!.oppGone && !_botBusy) _afterMine();
+    // Kopan oyuncunun sırası bilgisayara geçer (ev sahibi oynatır).
+    if (!ended) _afterChange();
+  }
+
+  /// Bu cihazın bir hamlesini uygula (çevrimiçiyse yayınla).
+  void _act(String mv, {int? asSeat}) {
+    final seat = asSeat ?? g.cur;
+    final n = net;
+    pending.clear();
+    selRack = null;
+    if (n != null) {
+      n.send(mv, asSeat: seat == me ? null : seat);
+      _pump();
+    } else {
+      final r = g.apply(seat, mv);
+      if (r != null) _announce(seat, r);
+      if (_localMulti && roles[g.cur] == SeatRole.local && g.cur != seat) _covered = true;
+      _save();
+    }
+  }
+
+  /// Sıra bilgisayardaysa oynat; oyun bittiyse bitir.
+  void _afterChange() {
+    if (!mounted || ended) return;
+    if (g.over) return _finish();
+    final cur = g.cur;
+    if (!_isBot(cur) || _botBusy) return;
+    final n = net;
+    if (n != null && !n.isHost) return;
+    _botBusy = true;
+    Future.delayed(const Duration(milliseconds: 600), () {
+      _botBusy = false;
+      if (!mounted || ended || g.cur != cur || !_isBot(cur)) return;
+      if (n != null && !n.isHost) return;
+      setState(() => _act(g.botMove(botRng, play.d), asSeat: cur));
+      play.ctx.sfx(Sfx.tap);
+      _afterChange();
+    });
   }
 
   Map<int, String> get pendingTiles => {for (final e in pending.entries) e.key: rack[e.value]};
 
   void _tapCell(int i) {
-    if (ended || botThinking) return;
+    if (!myTurn || _covered) return;
     if (pending.containsKey(i)) {
       setState(() => pending.remove(i));
       return;
     }
-    if (board[i].isNotEmpty || selRack == null) return;
+    if (g.board[i].isNotEmpty || selRack == null) return;
     setState(() {
       pending[i] = selRack!;
       selRack = null;
@@ -443,94 +649,110 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
     play.ctx.sfx(Sfx.place);
   }
 
-  void _submit() {
-    if (ended || botThinking || pending.isEmpty) return;
+  /// İnsan rakip varken (çevrimiçi ya da aynı cihaz) sözlükte olmayan kelime
+  /// itiraz edilmek üzere oynanabilir; bilgisayara karşı sözlük kesindir.
+  bool get _challengeMode => net != null || _localMulti;
+
+  Future<void> _submit() async {
+    if (!myTurn || pending.isEmpty) return;
     final tiles = pendingTiles;
-    final mv = rules.evaluate(board, tiles);
+    var mv = rules.evaluate(g.board, tiles);
     if (mv == null) {
-      play.ctx.sfx(Sfx.error);
-      flash(kt(play.lang, 'notWord'));
-      return;
+      final loose = _challengeMode ? rules.evaluate(g.board, tiles, dict: false) : null;
+      if (loose == null) {
+        play.ctx.sfx(Sfx.error);
+        flash(kt(lang, 'notWord'));
+        return;
+      }
+      // Oyunu bitirecek hamle (son tur ya da raf + torba boşalıyor) itiraz
+      // edilemeyeceği için sözlükte olmalı.
+      final s = g.cur;
+      final ending = g.turns[s] + 1 >= g.turnLimit && g.turns.where((t) => t >= g.turnLimit).length >= g.seats - 1;
+      if (ending || (g.bag.isEmpty && tiles.length == rack.length)) {
+        play.ctx.sfx(Sfx.error);
+        flash(kt(lang, 'mustBeValid'));
+        return;
+      }
+      final ok = await showDialog<bool>(
+            context: context,
+            builder: (c) => AlertDialog(
+              content: Text(kt(lang, 'notInDict')),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(c, false), child: Text(MaterialLocalizations.of(c).cancelButtonLabel)),
+                FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(kt(lang, 'playAnyway'))),
+              ],
+            ),
+          ) ??
+          false;
+      if (!ok || !mounted || !myTurn) return;
+      mv = loose;
     }
-    final code = encode(tiles);
-    setState(() {
-      pending.clear();
-      _apply(true, code);
-    });
-    net?.send(code);
+    final words = mv.words, score = mv.score;
+    setState(() => _act(BoardGame.encode(tiles)));
     play.ctx.sfx(Sfx.combo);
-    flash('${mv.words.map(lx.up).join(', ')}  +${mv.score}');
-    _afterMine();
+    flash('${words.map(lx.up).join(', ')}  +$score');
+    _afterChange();
   }
 
   void _pass({bool swap = false}) {
-    if (ended || botThinking) return;
-    final code = swap ? 'S' : 'X';
-    setState(() {
-      pending.clear();
-      _apply(true, code);
-    });
-    net?.send(code);
-    _afterMine();
+    if (!myTurn || _covered) return;
+    setState(() => _act(swap ? 'S' : 'X'));
+    _afterChange();
   }
 
-  bool get _gameOver =>
-      (myTurns >= p.turns && botTurns >= p.turns) || (bag.isEmpty && (rack.isEmpty || botRack.isEmpty)) || passes >= 4;
-
-  void _afterMine() {
-    if (_gameOver) return _finish();
-    setState(() => botThinking = true);
-    if (online) {
-      // Rakibin hamlesi ağdan gelir.
-      _onNet();
-      return;
-    }
-    _botBusy = true;
-    Future.delayed(const Duration(milliseconds: 600), () {
-      _botBusy = false;
-      if (!mounted || ended) return;
-      final moves = rules.movesFor(board, botRack);
-      setState(() {
-        botThinking = false;
-        if (moves.isEmpty) {
-          lastBot = _apply(false, 'S');
-        } else {
-          // Zorluğa göre en iyi hamleden ya da daha zayıf bir hamleden seç.
-          final q = (1 - play.d / 10) * 0.6;
-          final idx = math.min(moves.length - 1, (moves.length * q * botRng.nextDouble()).floor());
-          lastBot = _apply(false, encode(moves[idx].tiles));
-        }
-      });
-      play.ctx.sfx(Sfx.tap);
-      if (_gameOver) _finish();
-    });
+  void _challenge() {
+    if (!myTurn || _covered || !g.canChallenge(g.cur)) return;
+    setState(() => _act('C'));
+    play.ctx.sfx(Sfx.tap);
+    _afterChange();
   }
 
   void _finish() {
     if (ended) return;
     ended = true;
-    final h = '${kt(play.lang, 'you')} $me — ${kt(play.lang, 'rival')} $bot';
+    final w = g.winner;
     final n = net;
-    if (n != null) n.finish(me > bot ? n.me : (me < bot ? n.opp : -1));
+    if (n != null) n.finish(w);
+    final h = [for (var i = 0; i < g.seats; i++) '${seatName(i)} ${g.scores[i]}'].join(' — ');
     Future.delayed(const Duration(milliseconds: 800), () {
       if (!mounted) return;
-      if (me >= bot) {
+      final mine = g.scores[me];
+      if (_localMulti) {
         play.ctx.sfx(Sfx.win);
-        play.win(score: me * 5, stars: me - bot >= 40 ? 3 : (me - bot >= 15 ? 2 : 1), seconds: seconds, stats: {'words_found': myTurns});
+        play.ctx.finish(RoundResult(
+          won: true,
+          score: g.scores.reduce(math.max) * 5,
+          stars: 3,
+          seconds: seconds,
+          headline: w >= 0 ? '${play.ctx.seatName(w)} 🏆 · $h' : '${kt(lang, 'draw')} · $h',
+          gameStats: {'rounds_won': 1, 'words_found': g.turns.reduce((a, b) => a + b)},
+          winnerSeat: w,
+        ));
+        return;
+      }
+      final best = g.scores.reduce(math.max);
+      if (mine >= best) {
+        play.ctx.sfx(Sfx.win);
+        final second = [for (var i = 0; i < g.seats; i++) if (i != me) g.scores[i]].fold<int>(0, math.max);
+        play.win(
+            score: mine * 5,
+            stars: mine - second >= 40 ? 3 : (mine - second >= 15 ? 2 : 1),
+            seconds: seconds,
+            stats: {'words_found': g.turns[me]});
       } else {
         play.ctx.sfx(Sfx.lose);
-        play.lose(score: me * 5, seconds: seconds, headline: h);
+        play.lose(score: mine * 5, seconds: seconds, headline: h);
       }
     });
   }
 
   Future<void> _hint() async {
-    if (ended || botThinking) return;
+    if (!myTurn || _covered) return;
     if (!await play.ctx.requestHint()) return;
     if (!mounted) return;
-    final moves = rules.movesFor(board, rack, limit: 3000);
+    final moves = rules.movesFor(g.board, rack, limit: 3000);
     if (moves.isEmpty) {
-      flash(kt(play.lang, 'swap'));
+      flash(kt(lang, 'swap'));
       return;
     }
     final mv = moves.first;
@@ -551,21 +773,39 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
 
   @override
   Widget build(BuildContext context) {
-    final lang = play.lang;
     final prem = rules.prem;
     final usedIdx = pending.values.toSet();
     const premColors = [WColors.tile, Color(0xFFBFD7EA), Color(0xFF7FA7D1), Color(0xFFF1C6B6), Color(0xFFE07A5F)];
     const premLabels = ['', '2H', '3H', '2K', '3K'];
+    final board = g.board;
+    final canAct = myTurn && !_covered;
+    final scores = [
+      for (var i = 0; i < g.seats; i++) '${i == g.cur ? '▶ ' : ''}${seatName(i)} ${g.scores[i]}',
+    ];
     return Column(children: [
       WordBar(
         play: play,
-        left: '${kt(lang, 'you')} $me',
-        status: '${kt(lang, 'rival')} $bot · ${kt(lang, 'bag')}: ${bag.length}',
+        left: _localMulti ? seatName(g.cur) : '${kt(lang, 'you')} ${g.scores[me]}',
+        status: '${kt(lang, 'bag')}: ${g.bag.length}',
         onHint: _hint,
       ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: Wrap(alignment: WrapAlignment.center, spacing: 10, children: [
+          for (var i = 0; i < scores.length; i++)
+            Text(scores[i],
+                style: TextStyle(fontWeight: i == g.cur ? FontWeight.w900 : FontWeight.w600, fontSize: 13)),
+        ]),
+      ),
       flashLine(),
-      if (net != null) Text(kt(lang, botThinking ? 'rivalTurn' : 'yourTurn'), style: const TextStyle(fontWeight: FontWeight.w800)),
-      if (lastBot.isNotEmpty) Text('${kt(lang, 'rival')}: $lastBot', style: const TextStyle(fontWeight: FontWeight.w600)),
+      if (net != null || _localMulti)
+        Text(
+            myTurn
+                ? (_localMulti ? kt(lang, 'turnOf').replaceAll('{0}', seatName(g.cur)) : kt(lang, 'yourTurn'))
+                : kt(lang, 'turnOf').replaceAll('{0}', seatName(g.cur)),
+            style: const TextStyle(fontWeight: FontWeight.w800)),
+      if (lastMsg.isNotEmpty)
+        Text(lastMsg, maxLines: 2, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
       Expanded(
         child: LayoutBuilder(builder: (context, box) {
           final cs = math.min((box.maxWidth - 12) / kBoardN, (box.maxHeight - 6) / kBoardN);
@@ -588,7 +828,7 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: board[i].isNotEmpty
-                                ? const Color(0xFFF3E1B9)
+                                ? (g.last?.tiles.containsKey(i) == true ? const Color(0xFFFFE08A) : const Color(0xFFF3E1B9))
                                 : (pending.containsKey(i) ? WColors.near : premColors[prem[i]]),
                             borderRadius: BorderRadius.circular(3),
                           ),
@@ -597,7 +837,8 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
                                   style: TextStyle(fontSize: cs * 0.52, fontWeight: FontWeight.w800, color: WColors.ink))
                               : (i == BoardRules.center
                                   ? Icon(Icons.star, size: cs * 0.5, color: WColors.on(premColors[prem[i]]))
-                                  : Text(premLabels[prem[i]], style: TextStyle(fontSize: cs * 0.28, color: WColors.on(premColors[prem[i]]), fontWeight: FontWeight.w800))),
+                                  : Text(premLabels[prem[i]],
+                                      style: TextStyle(fontSize: cs * 0.28, color: WColors.on(premColors[prem[i]]), fontWeight: FontWeight.w800))),
                         ),
                       ),
                   ],
@@ -607,35 +848,52 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
           );
         }),
       ),
-      Padding(
-        padding: const EdgeInsets.all(4),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          for (var i = 0; i < rack.length; i++)
-            Padding(
-              padding: const EdgeInsets.all(2),
-              child: Opacity(
-                opacity: usedIdx.contains(i) ? 0.25 : 1,
-                child: LetterTile(
-                  letter: lx.upCh(rack[i]),
-                  value: lx.letterValue(rack[i]),
-                  size: 44,
-                  selected: selRack == i,
-                  onTap: usedIdx.contains(i) ? null : () => setState(() => selRack = i),
+      if (_covered)
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: BigButton(
+            label: '${kt(lang, 'turnOf').replaceAll('{0}', seatName(g.cur))} · ${kt(lang, 'tapReady')}',
+            onPressed: () => setState(() => _covered = false),
+          ),
+        )
+      else
+        Padding(
+          padding: const EdgeInsets.all(4),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            for (var i = 0; i < rack.length; i++)
+              Padding(
+                padding: const EdgeInsets.all(2),
+                child: Opacity(
+                  opacity: usedIdx.contains(i) || !canAct ? 0.35 : 1,
+                  child: LetterTile(
+                    letter: lx.upCh(rack[i]),
+                    value: lx.letterValue(rack[i]),
+                    size: 44,
+                    selected: selRack == i,
+                    onTap: usedIdx.contains(i) || !canAct ? null : () => setState(() => selRack = i),
+                  ),
                 ),
               ),
-            ),
-        ]),
-      ),
+          ]),
+        ),
       Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
         IconButton.filledTonal(tooltip: kt(lang, 'clear'), onPressed: () => setState(pending.clear), icon: const Icon(Icons.undo)),
         IconButton.filledTonal(
           tooltip: kt(lang, 'shuffle'),
-          onPressed: pending.isEmpty ? () => setState(() => rack.shuffle()) : null,
+          onPressed: pending.isEmpty && canAct ? () => setState(() => rack.shuffle()) : null,
           icon: const Icon(Icons.shuffle),
         ),
-        IconButton.filledTonal(tooltip: kt(lang, 'swap'), onPressed: () => _pass(swap: true), icon: const Icon(Icons.swap_horiz)),
-        TextButton(onPressed: () => _pass(), child: Text(kt(lang, 'pass'))),
-        BigButton(label: kt(lang, 'submit'), onPressed: botThinking ? null : _submit),
+        IconButton.filledTonal(
+            tooltip: kt(lang, 'swap'), onPressed: canAct ? () => _pass(swap: true) : null, icon: const Icon(Icons.swap_horiz)),
+        if (_challengeMode)
+          TextButton.icon(
+            key: const ValueKey('board-challenge'),
+            onPressed: canAct && g.canChallenge(g.cur) ? _challenge : null,
+            icon: const Icon(Icons.gavel_rounded),
+            label: Text(kt(lang, 'challenge')),
+          ),
+        TextButton(onPressed: canAct ? () => _pass() : null, child: Text(kt(lang, 'pass'))),
+        BigButton(label: kt(lang, 'submit'), onPressed: canAct ? _submit : null),
       ]),
       const SizedBox(height: 6),
     ]);

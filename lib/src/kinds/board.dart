@@ -626,7 +626,7 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
             ),
         ]),
       ),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
         IconButton.filledTonal(tooltip: kt(lang, 'clear'), onPressed: () => setState(pending.clear), icon: const Icon(Icons.undo)),
         IconButton.filledTonal(
           tooltip: kt(lang, 'shuffle'),

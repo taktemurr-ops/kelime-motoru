@@ -25,6 +25,7 @@ void main() {
       }
     }
     for (final l in ['tr', 'en', 'ja', 'zh']) {
+      if (!kBoxLangs.contains(l)) continue;
       final lx = Lexicon.of(l);
       final p = const BoxKind().make(lx, 5, SeededRandom(11)) as BoxPuzzle?;
       if (p == null) continue;
@@ -44,6 +45,12 @@ void main() {
       }
     }
   });
+  test('tema avı: dil sayısı', () {
+    // ignore: avoid_print
+    print('tema-avi dilleri: ${ThemeKind.langs.length} ${ThemeKind.langs.join(' ')}');
+    expect(ThemeKind.langs.length, greaterThanOrEqualTo(27));
+  });
+
   test('tema avı: Hamilton yolu ve 33 dilde bölüm', () {
     final r = SeededRandom(5);
     for (final (w, h) in [(3, 4), (5, 6), (6, 7)]) {
@@ -53,7 +60,7 @@ void main() {
         expect(ThemeKind.adjacent(path[i - 1], path[i], w), isTrue);
       }
     }
-    for (final l in kAllWordLangs) {
+    for (final l in ThemeKind.langs) {
       final lx = Lexicon.of(l);
       // ignore: avoid_print
       print('tema-avi $l: ${ThemeKind.themes(lx).length} tema');

@@ -30,8 +30,14 @@ class ThemeKind extends WordKind {
   @override
   String get id => 'tema-avi';
 
+  /// Yeterli temanın kurulabildiği diller (sözlük ve kategori listesine göre).
+  static final List<String> langs = [
+    for (final l in kAllWordLangs)
+      if (Lexicon.hasList(l) && themes(Lexicon.of(l)).length >= 6) l
+  ];
+
   @override
-  List<String>? get contentLangs => kAllWordLangs;
+  List<String>? get contentLangs => langs;
 
   /// Hiragana → katakana (Japonca sözlük katakanadır).
   static String _kata(String s) => String.fromCharCodes([

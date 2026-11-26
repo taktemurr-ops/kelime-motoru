@@ -24,6 +24,14 @@ class PicsPuzzle extends WPuzzle {
   const PicsPuzzle(this.concept, this.icons, this.answer, this.bank);
 }
 
+/// Zemin rengine göre okunaklı simge rengi (beyaz ya da mürekkep).
+Color _iconOn(Color bg) {
+  final l = bg.computeLuminance();
+  final white = 1.05 / (l + 0.05);
+  final ink = (l + 0.05) / (WColors.ink.computeLuminance() + 0.05);
+  return white >= ink ? Colors.white : WColors.ink;
+}
+
 class PicsKind extends WordKind {
   const PicsKind();
 
@@ -225,7 +233,7 @@ class _PicsViewState extends State<_PicsView> with SecondsTicker, Flash {
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 2),
                     ),
-                    child: Icon(icons[p.icons[k]], size: cell * 0.62, color: Colors.white),
+                    child: Icon(icons[p.icons[k]], size: cell * 0.62, color: _iconOn(WColors.marks[(p.concept + k * 3) % 8])),
                   ),
               ]),
             ),
@@ -485,14 +493,19 @@ class BoxPuzzle extends WPuzzle {
   }
 }
 
+/// Harf Kutusu'nun içerik dilleri.
+final kBoxLangs = [for (final l in kAllWordLangs) if (l != 'vi' && l != 'th') l];
+
 class BoxKind extends WordKind {
   const BoxKind();
 
   @override
   String get id => 'harf-kutusu';
 
+  /// Harf dilleri (Vietnamca ve Tay dilinde hece taşlarıyla on iki taşlık
+  /// zincir kurulamaz; taş dillerinden yalnızca kurulabilenler).
   @override
-  List<String>? get contentLangs => kAllWordLangs;
+  List<String>? get contentLangs => kBoxLangs;
 
   static int limitFor(int d) => const [6, 6, 5, 5, 5, 4, 4, 4, 3, 3][d - 1];
 

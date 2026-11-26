@@ -24,14 +24,6 @@ class PicsPuzzle extends WPuzzle {
   const PicsPuzzle(this.concept, this.icons, this.answer, this.bank);
 }
 
-/// Zemin rengine göre okunaklı simge rengi (beyaz ya da mürekkep).
-Color _iconOn(Color bg) {
-  final l = bg.computeLuminance();
-  final white = 1.05 / (l + 0.05);
-  final ink = (l + 0.05) / (WColors.ink.computeLuminance() + 0.05);
-  return white >= ink ? Colors.white : WColors.ink;
-}
-
 class PicsKind extends WordKind {
   const PicsKind();
 
@@ -233,7 +225,14 @@ class _PicsViewState extends State<_PicsView> with SecondsTicker, Flash {
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 2),
                     ),
-                    child: Icon(icons[p.icons[k]], size: cell * 0.62, color: _iconOn(WColors.marks[(p.concept + k * 3) % 8])),
+                    child: Center(
+                      child: Container(
+                        width: cell * 0.8,
+                        height: cell * 0.8,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: Color.lerp(WColors.marks[(p.concept + k * 3) % 8], Colors.black, 0.55)),
+                        child: Icon(icons[p.icons[k]], size: cell * 0.52, color: Colors.white),
+                      ),
+                    ),
                   ),
               ]),
             ),
@@ -494,7 +493,7 @@ class BoxPuzzle extends WPuzzle {
 }
 
 /// Harf Kutusu'nun içerik dilleri.
-final kBoxLangs = [for (final l in kAllWordLangs) if (l != 'vi' && l != 'th') l];
+final kBoxLangs = [for (final l in kAllWordLangs) if (!const ['vi', 'th', 'zh', 'hi', 'bn'].contains(l)) l];
 
 class BoxKind extends WordKind {
   const BoxKind();
@@ -502,8 +501,8 @@ class BoxKind extends WordKind {
   @override
   String get id => 'harf-kutusu';
 
-  /// Harf dilleri (Vietnamca ve Tay dilinde hece taşlarıyla on iki taşlık
-  /// zincir kurulamaz; taş dillerinden yalnızca kurulabilenler).
+  /// Harf dilleri ve Korece (Vietnamca, Tay, Çince, Hintçe ve Bengalcede hece/
+  /// karakter taşlarıyla on iki taşlık zincir güvenle kurulamaz).
   @override
   List<String>? get contentLangs => kBoxLangs;
 

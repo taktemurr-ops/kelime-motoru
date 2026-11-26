@@ -3,6 +3,7 @@ import 'kinds/bank.dart';
 import 'kinds/board.dart';
 import 'kinds/cross.dart';
 import 'kinds/duel.dart';
+import 'kinds/ek4.dart';
 import 'kinds/fill.dart';
 import 'kinds/guess.dart';
 import 'kinds/motion.dart';
@@ -43,6 +44,10 @@ const Map<String, WordKind> kWordKinds = {
   'anagram': AnagramKind(),
   'kelime-kafesi': SquareKind(),
   'dusen-harfler': TypingKind('dusen-harfler', falling: true),
+  // 4. tur
+  'dort-resim': PicsKind(),
+  'bes-ipucu': CluesKind(),
+  'harf-kutusu': BoxKind(),
   // Kelime tahmini çeşit paketi
   'tahmin-4': GuessKind('tahmin-4', len: 4),
   'tahmin-6': GuessKind('tahmin-6', len: 6),

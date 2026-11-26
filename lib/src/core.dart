@@ -12,6 +12,7 @@ import 'package:studio_core/core/strings.dart';
 import 'package:studio_core/core/stats.dart';
 
 import 'words.dart';
+import 'studio_chrome.dart';
 
 /// Bir kelime oyununun kurulmuş bölümü (türe özgü veri).
 abstract class WPuzzle {
@@ -386,8 +387,12 @@ class _WordStageState extends State<WordStage> {
     } catch (_) {}
   }
 
+  /// Motorun bütün arayüzü (paneller, pencereler, düğmeler) onaylı koyu
+  /// tasarımda; tahta çizimleri kendi renklerini korur.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => StudioChrome(child: Builder(builder: _build));
+
+  Widget _build(BuildContext context) {
     if (_waitLang) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [

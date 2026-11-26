@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'core.dart';
+import 'studio_chrome.dart';
 import 'texts.dart';
 import 'words.dart';
 
@@ -19,6 +20,17 @@ class WColors {
   static const accent = Color(0xFF3E6FB0);
   static const warm = Color(0xFFC8553D);
   static const soft = Color(0xFFE8DFD0);
+
+  /// Zemin üstünde en okunur yazı rengi: beyaz ya da koyu mürekkep.
+  static Color on(Color bg) {
+    final l = bg.computeLuminance();
+    final white = 1.05 / (l + 0.05);
+    final ink = (l + 0.05) / (WColors.ink.computeLuminance() + 0.05);
+    return white >= ink ? Colors.white : WColors.ink;
+  }
+
+  /// Klavye tuşu ve taş havuzu zemini (onaylı koyu tasarım).
+  static Color key(BuildContext context) => Color.lerp(StudioLook.of(context).card, Colors.white, 0.10)!;
   static const List<Color> marks = [
     Color(0xFF5B8FD1), Color(0xFFE07A5F), Color(0xFF81B29A), Color(0xFFF2CC8F),
     Color(0xFFB08BBB), Color(0xFF6CC3C3), Color(0xFFE5989B), Color(0xFF9DB469),
@@ -74,7 +86,11 @@ mixin Flash<T extends StatefulWidget> on State<T> {
           duration: const Duration(milliseconds: 160),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-            decoration: BoxDecoration(color: WColors.ink.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white24),
+            ),
             child: Text(flashText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ),
@@ -92,16 +108,31 @@ class WordBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final look = StudioLook.of(context);
     final lang = play.lang;
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-      padding: const EdgeInsets.only(left: 10),
-      decoration: BoxDecoration(color: scheme.surface.withValues(alpha: 0.92), borderRadius: BorderRadius.circular(16)),
+      padding: const EdgeInsetsDirectional.only(start: 12),
+      constraints: const BoxConstraints(minHeight: 48),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: look.accent.withValues(alpha: 0.45), width: 1.2),
+      ),
       child: Row(children: [
-        if (left.isNotEmpty) Text(left, style: const TextStyle(fontWeight: FontWeight.w600)),
+        if (left.isNotEmpty)
+          Flexible(
+            child: Text(left,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w900, color: look.number)),
+          ),
         const SizedBox(width: 8),
-        Expanded(child: FittedBox(fit: BoxFit.scaleDown, child: Text(status, maxLines: 1, textAlign: TextAlign.center))),
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(status,
+                maxLines: 1, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, color: kStudioSubtle)),
+          ),
+        ),
         if (play.langs.length > 1)
           Tooltip(
             message: kt(lang, 'wordLang'),
@@ -113,7 +144,13 @@ class WordBar extends StatelessWidget {
             ),
           ),
         ...actions,
-        if (onHint != null) IconButton(tooltip: kt(lang, 'hint'), onPressed: onHint, icon: const Icon(Icons.lightbulb_outline)),
+        if (onHint != null)
+          IconButton(
+            tooltip: kt(lang, 'hint'),
+            visualDensity: VisualDensity.compact,
+            onPressed: onHint,
+            icon: const Icon(Icons.lightbulb_rounded, color: StudioLook.gold),
+          ),
       ]),
     );
   }
@@ -129,7 +166,8 @@ Future<void> pickWordLang(BuildContext context, WordPlay play) async {
           SimpleDialogOption(
             onPressed: () => Navigator.pop(c, code),
             child: Row(children: [
-              Icon(code == play.wl ? Icons.radio_button_checked : Icons.radio_button_off, size: 18),
+              Icon(code == play.wl ? Icons.radio_button_checked : Icons.radio_button_off,
+                  size: 18, color: code == play.wl ? StudioLook.of(c).accent : Colors.white70),
               const SizedBox(width: 10),
               Text(kWordLangNames[code] ?? code),
             ]),
@@ -165,7 +203,7 @@ class LetterTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = fill ?? WColors.tile;
-    final fg = textColor ?? (bg.computeLuminance() < 0.45 ? Colors.white : WColors.ink);
+    final fg = textColor ?? WColors.on(bg);
     final box = Container(
       width: size,
       height: size,
@@ -173,7 +211,7 @@ class LetterTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(size * 0.18),
-        border: Border.all(color: selected ? WColors.accent : (fill == null ? WColors.tileEdge : bg), width: selected ? 3 : 1.2),
+        border: Border.all(color: selected ? StudioLook.of(context).accent : (fill == null ? WColors.tileEdge : bg), width: selected ? 3 : 1.2),
         boxShadow: raised ? [BoxShadow(color: Colors.black.withValues(alpha: 0.18), offset: Offset(0, size * 0.06), blurRadius: 2)] : null,
       ),
       child: Stack(children: [
@@ -238,10 +276,11 @@ class WordKeyboard extends StatelessWidget {
     return LayoutBuilder(builder: (context, box) {
       final per = rows.first.length + 1;
       final kw = ((box.maxWidth - 8) / per - 4).clamp(18.0, 46.0);
+      final keyBg = WColors.key(context);
       Widget key(String label, VoidCallback onTap, {Color? color, double w = 1, IconData? icon}) => Padding(
             padding: const EdgeInsets.all(2),
             child: Material(
-              color: color ?? WColors.soft,
+              color: color ?? keyBg,
               borderRadius: BorderRadius.circular(7),
               child: InkWell(
                 borderRadius: BorderRadius.circular(7),
@@ -251,12 +290,12 @@ class WordKeyboard extends StatelessWidget {
                   height: kw * 1.25 > 50 ? 50.0 : kw * 1.25,
                   child: Center(
                     child: icon != null
-                        ? Icon(icon, size: 20, color: WColors.ink)
+                        ? Icon(icon, size: 20, color: WColors.on(color ?? keyBg))
                         : Text(label,
                             style: TextStyle(
                               fontSize: kw * 0.5,
                               fontWeight: FontWeight.w700,
-                              color: color != null && color.computeLuminance() < 0.45 ? Colors.white : WColors.ink,
+                              color: WColors.on(color ?? keyBg),
                             )),
                   ),
                 ),
@@ -303,10 +342,11 @@ class TilePool extends StatelessWidget {
       final longest = tiles.fold<int>(1, (a, t) => math.max(a, lx.upCh(t).runes.length));
       final per = longest > 4 ? 4 : (longest > 2 ? 5 : 6);
       final kw = ((box.maxWidth - 8) / per - 6).clamp(40.0, 96.0);
+      final keyBg = WColors.key(context);
       Widget key(Widget child, VoidCallback? onTap, {Color? color, double w = 1}) => Padding(
             padding: const EdgeInsets.all(3),
             child: Material(
-              color: color ?? WColors.soft,
+              color: color ?? keyBg,
               borderRadius: BorderRadius.circular(9),
               child: InkWell(
                 borderRadius: BorderRadius.circular(9),
@@ -332,7 +372,7 @@ class TilePool extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w700,
-                            color: (colors[t]?.computeLuminance() ?? 1) < 0.45 ? Colors.white : WColors.ink,
+                            color: WColors.on(colors[t] ?? keyBg),
                           )),
                     ),
                   ),
@@ -343,8 +383,8 @@ class TilePool extends StatelessWidget {
           ),
         ),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          if (onBack != null) key(const Icon(Icons.backspace_outlined, size: 20, color: WColors.ink), onBack, w: 1.4),
-          if (onEnter != null) key(const Icon(Icons.keyboard_return, size: 20, color: WColors.ink), onEnter, w: 2, color: WColors.near),
+          if (onBack != null) key(Icon(Icons.backspace_outlined, size: 20, color: WColors.on(keyBg)), onBack, w: 1.4),
+          if (onEnter != null) key(Icon(Icons.keyboard_return, size: 20, color: WColors.on(WColors.near)), onEnter, w: 2, color: WColors.near),
         ]),
       ]);
     });
@@ -365,11 +405,13 @@ class FoundWords extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: highlight.contains(w) ? WColors.near.withValues(alpha: 0.85) : WColors.paper.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: WColors.tileEdge),
+            color: highlight.contains(w) ? WColors.near : Colors.white.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: highlight.contains(w) ? WColors.near : Colors.white30),
           ),
-          child: Text(lx.up(w), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: WColors.ink)),
+          child: Text(lx.up(w),
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 13, color: highlight.contains(w) ? WColors.ink : Colors.white)),
         ),
     ]);
   }
@@ -386,11 +428,11 @@ class Panel extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         padding: padding,
         decoration: BoxDecoration(
-          color: WColors.paper.withValues(alpha: 0.94),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 6, offset: const Offset(0, 2))],
+          color: Colors.black.withValues(alpha: 0.26),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: StudioLook.of(context).accent.withValues(alpha: 0.40), width: 1.2),
         ),
-        child: child,
+        child: DefaultTextStyle.merge(style: const TextStyle(color: Colors.white), child: child),
       );
 }
 
@@ -405,11 +447,14 @@ class BigButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.all(4),
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: color ?? WColors.accent, minimumSize: const Size(64, 44)),
+        child: StudioButton(
+          expand: false,
+          height: 48,
+          fontSize: 16,
+          tone: color == null ? StudioButtonTone.play : StudioButtonTone.gold,
           onPressed: onPressed,
-          icon: Icon(icon ?? Icons.check, size: 18),
-          label: Text(label),
+          icon: icon ?? Icons.check_rounded,
+          label: label,
         ),
       );
 }

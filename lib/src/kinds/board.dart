@@ -596,8 +596,8 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
                               ? Text(lx.upCh(board[i].isNotEmpty ? board[i] : rack[pending[i]!]),
                                   style: TextStyle(fontSize: cs * 0.52, fontWeight: FontWeight.w800, color: WColors.ink))
                               : (i == BoardRules.center
-                                  ? Icon(Icons.star, size: cs * 0.5, color: Colors.white)
-                                  : Text(premLabels[prem[i]], style: TextStyle(fontSize: cs * 0.28, color: Colors.white, fontWeight: FontWeight.w700))),
+                                  ? Icon(Icons.star, size: cs * 0.5, color: WColors.on(premColors[prem[i]]))
+                                  : Text(premLabels[prem[i]], style: TextStyle(fontSize: cs * 0.28, color: WColors.on(premColors[prem[i]]), fontWeight: FontWeight.w800))),
                         ),
                       ),
                   ],
@@ -626,7 +626,7 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
             ),
         ]),
       ),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
         IconButton.filledTonal(tooltip: kt(lang, 'clear'), onPressed: () => setState(pending.clear), icon: const Icon(Icons.undo)),
         IconButton.filledTonal(
           tooltip: kt(lang, 'shuffle'),

@@ -363,11 +363,12 @@ class _JigsawViewState extends State<_JigsawView> with SecondsTicker, Flash {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: WColors.marks[i % WColors.marks.length].withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: WColors.tileEdge),
+                      color: WColors.marks[i % WColors.marks.length],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white38),
                     ),
-                    child: Text(lx.up(p.pieces[i]), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: WColors.ink)),
+                    child: Text(lx.up(p.pieces[i]),
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: WColors.on(WColors.marks[i % WColors.marks.length]))),
                   ),
                 ),
               ),

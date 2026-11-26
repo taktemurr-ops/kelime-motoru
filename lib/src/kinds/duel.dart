@@ -5,6 +5,7 @@ import 'package:studio_core/app/services/audio.dart';
 import 'package:studio_core/core/rng.dart';
 
 import '../core.dart';
+import '../studio_chrome.dart';
 import '../texts.dart';
 import '../ui.dart';
 import '../words.dart';
@@ -684,7 +685,7 @@ class _LnViewState extends State<_LnView> with SecondsTicker, Flash {
 
   Widget _numbersBody() {
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      Text('${rd.target}', style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w900, color: WColors.ink)),
+      Text('${rd.target}', style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w900, color: StudioLook.gold)),
       const SizedBox(height: 8),
       Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
         for (var i = 0; i < vals.length; i++)

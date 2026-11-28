@@ -7,4 +7,4 @@ export 'src/catalog.dart';
 export 'src/core.dart' show WordStage, WordRules, WordKind, WLevel, WPuzzle, WordNet, realize, wordRules;
 export 'src/kinds/board.dart' show BoardPuzzle, BoardGame, BoardRules;
 export 'src/texts.dart';
-export 'src/words.dart' show Lexicon, kWordLangs, kLetterLangs, kTileLangs, kQuizOnlyLangs, kAllWordLangs, kWordLangNames, wordLangFor;
+export 'src/words.dart' show Lexicon, isBlockedWord, kWordLangs, kLetterLangs, kTileLangs, kQuizOnlyLangs, kAllWordLangs, kWordLangNames, wordLangFor;

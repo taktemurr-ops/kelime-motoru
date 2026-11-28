@@ -775,7 +775,7 @@ class _BoardViewState extends State<_BoardView> with SecondsTicker, Flash {
   Widget build(BuildContext context) {
     final prem = rules.prem;
     final usedIdx = pending.values.toSet();
-    const premColors = [WColors.tile, Color(0xFFBFD7EA), Color(0xFF7FA7D1), Color(0xFFF1C6B6), Color(0xFFE07A5F)];
+    final premColors = [WColors.tile, Color(0xFFBFD7EA), Color(0xFF7FA7D1), Color(0xFFF1C6B6), Color(0xFFE07A5F)];
     const premLabels = ['', '2H', '3H', '2K', '3K'];
     final board = g.board;
     final canAct = myTurn && !_covered;

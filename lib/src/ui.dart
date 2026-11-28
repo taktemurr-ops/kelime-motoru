@@ -4,16 +4,18 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'core.dart';
+import 'identity.dart';
 import 'studio_chrome.dart';
 import 'texts.dart';
 import 'words.dart';
 
 /// Kelime ailesinin özgün renkleri.
 class WColors {
-  static const paper = Color(0xFFF7F1E6);
+  /// Kâğıt, taş yüzü ve taş kenarı oyunun malzemesinden gelir (bkz. [skinFor]).
+  static Color get paper => currentTiles.paper;
   static const ink = Color(0xFF243142);
-  static const tile = Color(0xFFFFFBF3);
-  static const tileEdge = Color(0xFFD9CBB3);
+  static Color get tile => currentTiles.face;
+  static Color get tileEdge => currentTiles.edge;
   static const hit = Color(0xFF4F9A6E);
   static const near = Color(0xFFD9A441);
   static const miss = Color(0xFF7B8494);

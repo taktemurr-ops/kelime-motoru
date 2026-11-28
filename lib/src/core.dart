@@ -12,6 +12,7 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 import 'package:studio_core/core/stats.dart';
 
+import 'identity.dart';
 import 'words.dart';
 import 'studio_chrome.dart';
 
@@ -441,8 +442,23 @@ class _WordStageState extends State<WordStage> {
 
   /// Motorun bütün arayüzü (paneller, pencereler, düğmeler) onaylı koyu
   /// tasarımda; tahta çizimleri kendi renklerini korur.
+  ///
+  /// Oyun alanı oyuna özgüdür ([skinFor]): zemin tonu ve deseni, panel
+  /// vurgusu ve taş malzemesi; aynı motorun oyunları birbirine benzemez.
   @override
-  Widget build(BuildContext context) => StudioChrome(child: Builder(builder: _build));
+  Widget build(BuildContext context) {
+    final skin = skinFor(widget.rules.gameId);
+    currentTiles = skin.tiles;
+    final look = skin.lookOver(StudioLook.of(context));
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(extensions: [...theme.extensions.values.where((e) => e is! StudioLook), look]),
+      child: StudioLookScope(
+        look: look,
+        child: WordBackdrop(skin: skin, child: StudioChrome(child: Builder(builder: _build))),
+      ),
+    );
+  }
 
   Widget _build(BuildContext context) {
     if (_waitLang) {
@@ -490,6 +506,8 @@ void registerWordLicenses() {
         'Filipino and Urdu lists and Japanese word frequencies come from wordfreq by Robyn Speer '
         '(https://github.com/rspeer/wordfreq), data CC BY-SA 4.0. Japanese readings come from JMdict '
         '(Electronic Dictionary Research and Development Group, https://www.edrdg.org/), CC BY-SA 4.0. '
+        'Accept-only lists of common inflected and function words (letter-script languages; never chosen as puzzle '
+        'answers) come from wordfreq by Robyn Speer, data CC BY-SA 4.0. '
         'The Finnish list is filtered with the Kotus word list (Institute for the Languages of Finland), '
         'CC BY 4.0. LibreOffice hunspell dictionaries (ar, fa, he, id) were used only as a build-time '
         'filter and are not distributed.\n\n'

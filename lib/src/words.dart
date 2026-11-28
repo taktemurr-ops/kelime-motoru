@@ -33,6 +33,34 @@ import 'data/words_ko.dart';
 import 'data/words_th.dart';
 import 'data/words_vi.dart';
 import 'data/words_zh.dart';
+import 'data/accept_tr.dart';
+import 'data/accept_en.dart';
+import 'data/accept_de.dart';
+import 'data/accept_es.dart';
+import 'data/accept_fr.dart';
+import 'data/accept_it.dart';
+import 'data/accept_pt.dart';
+import 'data/accept_nl.dart';
+import 'data/accept_sv.dart';
+import 'data/accept_da.dart';
+import 'data/accept_nb.dart';
+import 'data/accept_pl.dart';
+import 'data/accept_cs.dart';
+import 'data/accept_ro.dart';
+import 'data/accept_hu.dart';
+import 'data/accept_ru.dart';
+import 'data/accept_uk.dart';
+import 'data/accept_el.dart';
+import 'data/accept_fi.dart';
+import 'data/accept_id.dart';
+import 'data/accept_ms.dart';
+import 'data/accept_fil.dart';
+import 'data/accept_ar.dart';
+import 'data/accept_fa.dart';
+import 'data/accept_he.dart';
+import 'data/accept_ur.dart';
+import 'data/accept_ja.dart';
+import 'data/blocklist.dart';
 import 'tiles.dart';
 
 /// Harf alfabesiyle yazılan diller: harf taşlı, klavyeli ve ızgaralı bütün
@@ -78,6 +106,33 @@ const Map<String, String> _raw = {
   'he': wordsHe, 'ur': wordsUr, 'ja': wordsJa,
   'vi': wordsVi, 'ko': wordsKo, 'zh': wordsZh, 'hi': wordsHi, 'bn': wordsBn, 'th': wordsTh,
 };
+
+const Map<String, String> _accept = {
+  'tr': acceptTr, 'en': acceptEn, 'de': acceptDe, 'es': acceptEs, 'fr': acceptFr, 'it': acceptIt, 'pt': acceptPt, 'nl': acceptNl, 'sv': acceptSv, 'da': acceptDa, 'nb': acceptNb, 'pl': acceptPl, 'cs': acceptCs, 'ro': acceptRo, 'hu': acceptHu, 'ru': acceptRu, 'uk': acceptUk, 'el': acceptEl, 'fi': acceptFi, 'id': acceptId, 'ms': acceptMs, 'fil': acceptFil, 'ar': acceptAr, 'fa': acceptFa, 'he': acceptHe, 'ur': acceptUr, 'ja': acceptJa,
+};
+
+/// Cevap olarak seçilmeyen ama girildiğinde kabul edilen kelimeler (kısaltma,
+/// argo yazım): Wordle benzeri oyunlarda gizli kelime "gonna" olmasın.
+const Map<String, String> _noAnswer = {
+  'en': 'gonna wanna gotta gimme lemme dunno kinda sorta outta haven hasn wasn isn aren doesn didn couldn shouldn wouldn ain yeah yep nope okay whoa huh hmm ooh aah ohh',
+};
+
+Set<String>? _blockCache;
+String? _blockLang;
+
+/// Uygunsuz kelime mi (tam eşleşme ya da kök öneki). [natural]: kelimenin doğal
+/// yazımı (taş dillerinde taşlar birleştirilmiş; Vietnamcada heceler '_' ile).
+bool isBlockedWord(String natural, String lang) {
+  if (_blockLang != lang) {
+    _blockLang = lang;
+    _blockCache = {for (final w in (kBlockedWords[lang] ?? '').split(' ')) if (w.isNotEmpty) foldWord(w, lang)};
+  }
+  if (_blockCache!.contains(natural)) return true;
+  for (final st in kBlockedStems[lang] ?? const <String>[]) {
+    if (natural.startsWith(st)) return true;
+  }
+  return false;
+}
 
 /// Taş dillerinde içerikte geçip kelime listesinde olmayan taşlar.
 const Map<String, String> _extraTiles = {'vi': tilesVi, 'hi': tilesHi, 'bn': tilesBn, 'th': tilesTh};
@@ -213,8 +268,9 @@ class Lexicon {
   final bool jamo;
 
   Lexicon._(this.lang, this.words, this.all, this._byLen, this.letters, this.letterWeights,
-      {this.tiled = false, this.jamo = false, Map<String, String>? tileText, Map<String, String>? tileCode, Map<String, String>? natural})
-      : _tileText = tileText ?? const {},
+      {this.tiled = false, this.jamo = false, Map<String, String>? tileText, Map<String, String>? tileCode, Map<String, String>? natural, Set<String>? extra})
+      : _extra = extra ?? const {},
+        _tileText = tileText ?? const {},
         _tileCode = tileCode ?? const {},
         _natural = natural ?? const {};
 
@@ -234,17 +290,30 @@ class Lexicon {
   static Lexicon _load(String lang) {
     final seen = <String>{};
     final list = <String>[];
+    final extra = <String>{};
+    final noAns = (_noAnswer[lang] ?? '').split(' ').toSet();
     for (final w0 in (_raw[lang] ?? '').split(' ')) {
       if (w0.isEmpty) continue;
       final w = foldWord(w0, lang);
-      if (w.length < 3 || !seen.add(w)) continue;
+      if (w.length < 3 || isBlockedWord(w, lang)) continue;
+      if (noAns.contains(w)) {
+        extra.add(w);
+        continue;
+      }
+      if (!seen.add(w)) continue;
       list.add(w);
     }
-    return _finish(lang, list, seen);
+    for (final w0 in (_accept[lang] ?? '').split(' ')) {
+      if (w0.isEmpty) continue;
+      final w = foldWord(w0, lang);
+      if (w.length < 3 || seen.contains(w) || isBlockedWord(w, lang)) continue;
+      extra.add(w);
+    }
+    return _finish(lang, list, seen, extra: extra);
   }
 
   static Lexicon _finish(String lang, List<String> list, Set<String> seen,
-      {bool tiled = false, bool jamo = false, Map<String, String>? tileText, Map<String, String>? tileCode, Map<String, String>? natural}) {
+      {bool tiled = false, bool jamo = false, Map<String, String>? tileText, Map<String, String>? tileCode, Map<String, String>? natural, Set<String>? extra}) {
     final byLen = <int, List<String>>{};
     final counts = <String, int>{};
     for (final w in list) {
@@ -255,7 +324,7 @@ class Lexicon {
     }
     final letters = counts.keys.toList()..sort((a, b) => counts[b]!.compareTo(counts[a]!));
     return Lexicon._(lang, list, seen, byLen, letters, [for (final l in letters) counts[l]!],
-        tiled: tiled, jamo: jamo, tileText: tileText, tileCode: tileCode, natural: natural);
+        tiled: tiled, jamo: jamo, tileText: tileText, tileCode: tileCode, natural: natural, extra: extra);
   }
 
   /// Taş dilleri: zh ve ko'da her karakter kendisi, vi/hi/bn/th'de taşlar '+' ile ayrılmış.
@@ -267,6 +336,7 @@ class Lexicon {
     var next = 0xE000;
     for (final w0 in (_raw[lang] ?? '').split(' ')) {
       if (w0.isEmpty) continue;
+      if (isBlockedWord(lang == 'vi' ? w0.replaceAll('+', '_') : w0.replaceAll('+', ''), lang)) continue;
       String w;
       if (coded) {
         final b = StringBuffer();
@@ -311,7 +381,8 @@ class Lexicon {
     return _finish('ko', list, seen, jamo: true);
   }
 
-  bool has(String w) => all.contains(w);
+  /// Kelime geçerli mi: ana liste ya da yalnızca kabul listesi.
+  bool has(String w) => all.contains(w) || _extra.contains(w);
 
   /// [len] harfli (taş dillerinde taşlı) kelimeler (sıklık sırasıyla).
   List<String> ofLength(int len) => _byLen[len] ?? const <String>[];

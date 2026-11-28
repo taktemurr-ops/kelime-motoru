@@ -449,6 +449,7 @@ class _WordStageState extends State<WordStage> {
   Widget build(BuildContext context) {
     final skin = skinFor(widget.rules.gameId);
     currentTiles = skin.tiles;
+    highContrastMarks = widget.ctx.colorBlind;
     final look = skin.lookOver(StudioLook.of(context));
     final theme = Theme.of(context);
     return Theme(

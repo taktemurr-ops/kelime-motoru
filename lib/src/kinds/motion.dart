@@ -538,7 +538,7 @@ class _TypingViewState extends State<_TypingView> with SecondsTicker, Flash {
             const SizedBox(height: 10),
             RichText(
               text: TextSpan(children: [
-                TextSpan(text: lx.up(input), style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: WColors.hit)),
+                TextSpan(text: lx.up(input), style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: WColors.hit)),
                 TextSpan(text: lx.up(w.substring(math.min(input.length, w.length))), style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: WColors.ink)),
               ]),
             ),

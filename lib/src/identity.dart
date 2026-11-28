@@ -129,6 +129,9 @@ WordSkin skinFor(String gameId) {
       mats[(h ~/ 7) % mats.length]);
 }
 
+/// Renk körlüğü ayarı açık mı (harf işaretleri turuncu/mavi olur).
+bool highContrastMarks = false;
+
 /// Etkin oyunun taş malzemesi (aynı anda tek oyun oynanır; [WColors] okur).
 WordTileMaterial currentTiles = kPaperTiles;
 

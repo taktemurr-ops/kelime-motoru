@@ -16,8 +16,10 @@ class WColors {
   static const ink = Color(0xFF243142);
   static Color get tile => currentTiles.face;
   static Color get tileEdge => currentTiles.edge;
-  static const hit = Color(0xFF4F9A6E);
-  static const near = Color(0xFFD9A441);
+  /// Yerinde / var ama yerinde değil. Renk körlüğü ayarında yüksek karşıtlıklı
+  /// turuncu/mavi (yalnız yeşil-sarıya dayanmasın).
+  static Color get hit => highContrastMarks ? const Color(0xFFF5793A) : const Color(0xFF4F9A6E);
+  static Color get near => highContrastMarks ? const Color(0xFF85C0F9) : const Color(0xFFD9A441);
   static const miss = Color(0xFF7B8494);
   static const accent = Color(0xFF3E6FB0);
   static const warm = Color(0xFFC8553D);

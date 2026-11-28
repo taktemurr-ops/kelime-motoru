@@ -267,6 +267,10 @@ class Lexicon {
   /// Korece jamo (klavye) sözlüğü mü.
   final bool jamo;
 
+  /// Yalnızca kabul edilen kelimeler (çekimli biçimler, işlev kelimeleri):
+  /// oyuncunun girdiği kelime geçerli sayılır ama bölüm kelimesi seçilmez.
+  final Set<String> _extra;
+
   Lexicon._(this.lang, this.words, this.all, this._byLen, this.letters, this.letterWeights,
       {this.tiled = false, this.jamo = false, Map<String, String>? tileText, Map<String, String>? tileCode, Map<String, String>? natural, Set<String>? extra})
       : _extra = extra ?? const {},

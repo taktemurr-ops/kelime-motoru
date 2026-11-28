@@ -5,6 +5,8 @@
 #    işlev kelimeleri). Yalnızca girilen kelimeyi kabul etmek için kullanılır; bölüm
 #    cevabı/ızgara kelimesi olarak SEÇİLMEZ. Kaynak: wordfreq (Apache-2.0, veri CC BY-SA 4.0).
 import re, json, sys, unicodedata, os, wordfreq
+def q(x):
+    return x.replace('\\', '\\\\').replace("'", "\\'").replace('$', '\\$')
 T = os.path.dirname(os.path.abspath(__file__))
 D = sys.argv[1] if len(sys.argv) > 1 else T + '/../lib/src/data'
 RAW = sys.argv[2] if len(sys.argv) > 2 else None   # LDNOOBW ve bad_*.txt klasörü (isteğe bağlı)
@@ -46,7 +48,7 @@ for l in LETTER:
     with open(f'{D}/accept_{l}.dart', 'w', encoding='utf-8') as f:
         f.write('// Kaynak: wordfreq (Apache-2.0; veri CC BY-SA 4.0). tool/build_accept.py ile üretilir; elle değiştirmeyin.\n')
         f.write('// Yalnızca oyuncunun girdiği kelimeyi kabul etmek için: bölüm kelimesi olarak seçilmez.\n')
-        f.write(f"const String accept{l[0].upper()+l[1:]} = '{s}';\n")
+        f.write(f"const String accept{l[0].upper()+l[1:]} = '{q(s)}';\n")
     print(l, len(out))
 print('bytes', tot)
 # Engel listesi (çalışma anında bütün listelere uygulanır).
@@ -56,9 +58,9 @@ with open(f'{D}/blocklist.dart', 'w', encoding='utf-8') as f:
     f.write('const Map<String, String> kBlockedWords = {\n')
     for l in sorted(set(B) | set(ext)):
         ws = sorted(set(B.get(l, '').split()) | ({x for x in ext.get(l, ()) if len(x) >= 2} if l in ('nb', 'fil') else set()))
-        f.write(f"  '{l}': '{' '.join(ws)}',\n")
+        f.write(f"  '{l}': '{q(' '.join(ws))}',\n")
     f.write('};\n\n/// Kök önekleri: bu öneklerle başlayan kelimeler de engellenir.\n')
     f.write('const Map<String, List<String>> kBlockedStems = {\n')
     for l, st in sorted(STEMS.items()):
-        f.write(f"  '{l}': [{', '.join(repr(s) for s in st)}],\n")
+        f.write(f"  '{l}': [{', '.join(chr(39) + q(s) + chr(39) for s in st)}],\n")
     f.write('};\n')
